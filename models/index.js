@@ -1,9 +1,13 @@
-const User = require("./User");
-//const Supplier = require("./Supplier");
-const Product = require("./Product");
-//db.supplier = require("./Supplier.js")(mongoose);
+const User = require('./User');
+const Product = require('./Product');
+const Category = require('./Category');
+const Subcategory = require('./Subcategory');
+// Si no tienes modelo Supplier, elimina esta línea
+
 module.exports = {
   User,
-  Supplier,
   Product,
+  Category,
+  Subcategory
+  // Si no usas Supplier, no lo incluyas aquí
 };
