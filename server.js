@@ -3,7 +3,7 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const mongoose = require("mongoose");
-const supplierRoutes = require('./routes/supplierRoutes');
+//const supplierRoutes = require('./routes/supplierRoutes');
 
 const app = express();
 
@@ -15,7 +15,7 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.use('/api/suppliers', supplierRoutes);
+//app.use('/api/suppliers', supplierRoutes);
 
 // Middlewares
 app.use(bodyParser.json());
@@ -38,7 +38,7 @@ const routes = [
   { path: '/api/categories', file: './routes/categoryRoutes' },
   { path: '/api/subcategories', file: './routes/subcategoryRoutes' },
   { path: '/api/products', file: './routes/productRoutes' },
-  { path: '/api/suppliers', file: './routes/supplierRoutes' }
+  //{ path: '/api/suppliers', file: './routes/supplierRoutes' }
 ];
 
 routes.forEach(route => {
