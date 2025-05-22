@@ -3,24 +3,24 @@ const config = require('../config');
 
 exports.verifyToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  
-  if (!token) {
-    return res.status(401).json({
+  if (!authHeader) {
+    return res.status(401).json({ 
       success: false,
-      message: 'Token no proporcionado'
+      message: 'Token no proporcionado' 
     });
   }
 
-  jwt.verify(token, config.SECRET, (err, user) => {
+  const token = authHeader.split(' ')[1];
+  jwt.verify(token, config.SECRET, (err, decoded) => {
     if (err) {
-      return res.status(403).json({
+      return res.status(403).json({ 
         success: false,
-        message: 'Token inválido o expirado'
+        message: 'Token inválido' 
       });
     }
     
-    req.user = user;
+    req.userId = decoded.id;
+    req.userRole = decoded.role;
     next();
   });
 };
