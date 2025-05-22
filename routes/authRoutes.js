@@ -1,11 +1,18 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const authController = require('../controllers/authController');
+const authController = require("../controllers/authController");
 
-// Ruta para registro de usuarios
-router.post('/signup', authController.signup);
+// Configurar CORS
+router.use((req, res, next) => {
+  res.header(
+    "Access-Control-Allow-Headers",
+    "x-access-token, Origin, Content-Type, Accept"
+  );
+  next();
+});
 
-// Ruta para inicio de sesión
-router.post('/signin', authController.signin);
+// Rutas de autenticación
+router.post("/signin", authController.signin);
+router.post("/signup", authController.signup);
 
 module.exports = router;
