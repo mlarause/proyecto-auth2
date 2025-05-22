@@ -3,30 +3,26 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const config = require('../config/auth.config');
 
-/**
- * @desc    Registrar nuevo usuario
- * @route   POST /api/auth/signup
- * @access  Public
- */
 exports.signup = async (req, res) => {
     try {
-        // 1. Validar campos requeridos
-        const { name, email, password, role } = req.body;
-        
-        if (!name || !email || !password) {
-            console.log('Intento de registro con campos faltantes');
+        // 1. Extraer campos del body (compatible con 'username' o 'name')
+        const { username, name, email, password, role } = req.body;
+        const userName = name || username; // Acepta ambos campos
+
+        // 2. Validación de campos requeridos
+        if (!userName || !email || !password) {
             return res.status(400).json({
                 success: false,
                 message: 'Nombre, email y contraseña son requeridos',
                 fields: {
-                    name: !name ? 'Nombre es requerido' : null,
+                    name: !userName ? 'Nombre es requerido' : null,
                     email: !email ? 'Email es requerido' : null,
                     password: !password ? 'Contraseña es requerida' : null
                 }
             });
         }
 
-        // 2. Validar formato de email
+        // 3. Validar formato de email
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(email)) {
             return res.status(400).json({
@@ -35,27 +31,18 @@ exports.signup = async (req, res) => {
             });
         }
 
-        // 3. Verificar si el usuario ya existe
+        // 4. Verificar si el usuario ya existe
         const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
         if (existingUser) {
-            console.log(`Intento de registrar email existente: ${email}`);
             return res.status(400).json({
                 success: false,
                 message: 'El email ya está registrado'
             });
         }
 
-        // 4. Validar fortaleza de contraseña
-        if (password.length < 6) {
-            return res.status(400).json({
-                success: false,
-                message: 'La contraseña debe tener al menos 6 caracteres'
-            });
-        }
-
-        // 5. Crear nuevo usuario
+        // 5. Crear nuevo usuario (ajustado al modelo User)
         const newUser = new User({
-            name: name.trim(),
+            name: userName.trim(), // Usa el nombre encontrado (username o name)
             email: email.toLowerCase().trim(),
             password: bcrypt.hashSync(password, 8),
             role: role || 'auxiliary'
@@ -63,20 +50,7 @@ exports.signup = async (req, res) => {
 
         await newUser.save();
 
-        // 6. Generar token JWT
-        const token = jwt.sign(
-            {
-                id: newUser._id,
-                name: newUser.name,
-                email: newUser.email,
-                role: newUser.role
-            },
-            config.secret,
-            { expiresIn: config.jwtExpiration }
-        );
-
-        // 7. Respuesta exitosa
-        console.log(`Nuevo usuario registrado: ${newUser.email} (${newUser.role})`);
+        // 6. Respuesta exitosa (formato consistente con otros módulos)
         return res.status(201).json({
             success: true,
             message: 'Usuario registrado exitosamente',
@@ -84,8 +58,7 @@ exports.signup = async (req, res) => {
                 id: newUser._id,
                 name: newUser.name,
                 email: newUser.email,
-                role: newUser.role,
-                accessToken: token
+                role: newUser.role
             }
         });
 
