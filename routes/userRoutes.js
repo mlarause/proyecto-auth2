@@ -3,17 +3,19 @@ const router = express.Router();
 const userController = require('../controllers/userController');
 const { authJwt, verifySignUp, role } = require('../middlewares');
 
+// Aplicar autenticación a todas las rutas
+router.use(authJwt.verifyToken);
+
 // GET /api/users - Solo Admin
 router.get(
   '/',
-  [authJwt.verifyToken, role.checkRole(['admin'])],
+  role.checkRole(['admin']),
   userController.getAllUsers
 );
 
-// GET /api/users/:id - Admin ve todo, coordinador/auxiliar solo su perfil
+// GET /api/users/:id - Acceso diferenciado por rol
 router.get(
   '/:id',
-  authJwt.verifyToken,
   userController.getUserById
 );
 
@@ -21,7 +23,6 @@ router.get(
 router.post(
   '/',
   [
-    authJwt.verifyToken,
     role.checkRole(['admin', 'coordinador']),
     verifySignUp.checkDuplicateUsernameOrEmail,
     verifySignUp.checkRolesExisted
@@ -33,7 +34,6 @@ router.post(
 router.put(
   '/:id',
   [
-    authJwt.verifyToken,
     role.checkRole(['admin', 'coordinador']),
     verifySignUp.checkRolesExisted
   ],
@@ -43,7 +43,7 @@ router.put(
 // DELETE /api/users/:id - Solo Admin
 router.delete(
   '/:id',
-  [authJwt.verifyToken, role.checkRole(['admin'])],
+  role.checkRole(['admin']),
   userController.deleteUser
 );
 

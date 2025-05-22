@@ -2,17 +2,16 @@ const jwt = require('jsonwebtoken');
 const config = require('../config');
 
 exports.verifyToken = (req, res, next) => {
-  let token = req.headers['x-access-token'] || req.headers['authorization'];
-  
-  if (!token) {
-    return res.status(403).json({
-      success: false,
-      message: 'No se proporcionó token'
-    });
-  }
+  // Obtener token de múltiples fuentes
+  const token = req.headers['x-access-token'] || 
+               req.headers['authorization']?.split(' ')[1] || 
+               req.cookies?.token;
 
-  if (token.startsWith('Bearer ')) {
-    token = token.slice(7, token.length);
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      message: 'Acceso no autorizado: Token no proporcionado'
+    });
   }
 
   jwt.verify(token, config.SECRET, (err, decoded) => {
@@ -22,7 +21,10 @@ exports.verifyToken = (req, res, next) => {
         message: 'Token inválido o expirado'
       });
     }
-    req.user = decoded;
+
+    // Asignar usuario decodificado
+    req.userId = decoded.id;
+    req.userRole = decoded.role;
     next();
   });
 };

@@ -9,7 +9,7 @@ exports.getAllUsers = async (req, res) => {
     const users = await User.find().select('-password');
     res.status(200).json({
       success: true,
-      users: users
+      users
     });
   } catch (error) {
     res.status(500).json({
@@ -20,7 +20,7 @@ exports.getAllUsers = async (req, res) => {
   }
 };
 
-// Obtener usuario específico (con validación de roles)
+// Obtener usuario específico
 exports.getUserById = async (req, res) => {
   try {
     const user = await User.findById(req.params.id).select('-password');
@@ -32,27 +32,24 @@ exports.getUserById = async (req, res) => {
       });
     }
 
-    // Auxiliar solo puede verse a sí mismo
-    if (req.user.role === 'auxiliar' && req.user.id !== req.params.id) {
+    // Validaciones de acceso
+    if (req.userRole === 'auxiliar' && req.userId !== user._id.toString()) {
       return res.status(403).json({
         success: false,
         message: 'No tienes permisos para ver este usuario'
       });
     }
 
-    // Coordinador puede verse a sí mismo y a auxiliares
-    if (req.user.role === 'coordinador' && 
-        req.user.id !== req.params.id && 
-        user.role === 'admin') {
+    if (req.userRole === 'coordinador' && user.role === 'admin') {
       return res.status(403).json({
         success: false,
-        message: 'No tienes permisos para ver este usuario'
+        message: 'No puedes ver usuarios admin'
       });
     }
 
     res.status(200).json({
       success: true,
-      user: user
+      user
     });
   } catch (error) {
     res.status(500).json({
@@ -63,7 +60,7 @@ exports.getUserById = async (req, res) => {
   }
 };
 
-// [MANTENIDO] Función original de creación de usuarios
+// Crear usuario (Admin y Coordinador)
 exports.createUser = async (req, res) => {
   try {
     const { username, email, password, role } = req.body;
@@ -77,11 +74,7 @@ exports.createUser = async (req, res) => {
 
     const savedUser = await user.save();
     
-    const token = jwt.sign({ id: savedUser._id }, config.SECRET, {
-      expiresIn: 86400
-    });
-
-    res.status(201).json({ 
+    res.status(201).json({
       success: true,
       message: 'Usuario creado exitosamente',
       user: {
@@ -89,8 +82,7 @@ exports.createUser = async (req, res) => {
         username: savedUser.username,
         email: savedUser.email,
         role: savedUser.role
-      },
-      token 
+      }
     });
   } catch (error) {
     res.status(500).json({
@@ -101,7 +93,7 @@ exports.createUser = async (req, res) => {
   }
 };
 
-// [MANTENIDO] Función original de actualización
+// Actualizar usuario (Admin y Coordinador)
 exports.updateUser = async (req, res) => {
   try {
     const updatedUser = await User.findByIdAndUpdate(
@@ -143,10 +135,9 @@ exports.deleteUser = async (req, res) => {
       });
     }
 
-    res.status(200).json({ 
+    res.status(200).json({
       success: true,
-      message: 'Usuario eliminado correctamente',
-      deletedUserId: deletedUser._id 
+      message: 'Usuario eliminado correctamente'
     });
   } catch (error) {
     res.status(500).json({
