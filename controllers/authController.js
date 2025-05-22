@@ -3,39 +3,149 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const config = require('../config/auth.config');
 
-exports.signin = async (req, res) => {
+/**
+ * @desc    Registrar nuevo usuario
+ * @route   POST /api/auth/signup
+ * @access  Public
+ */
+exports.signup = async (req, res) => {
     try {
-        // Validación básica
-        if (!req.body.email || !req.body.password) {
+        // 1. Validar campos requeridos
+        const { name, email, password, role } = req.body;
+        
+        if (!name || !email || !password) {
+            console.log('Intento de registro con campos faltantes');
             return res.status(400).json({
                 success: false,
-                message: 'Email y contraseña son requeridos'
+                message: 'Nombre, email y contraseña son requeridos',
+                fields: {
+                    name: !name ? 'Nombre es requerido' : null,
+                    email: !email ? 'Email es requerido' : null,
+                    password: !password ? 'Contraseña es requerida' : null
+                }
             });
         }
 
-        // Buscar usuario (similar a otros módulos)
+        // 2. Validar formato de email
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Formato de email inválido'
+            });
+        }
+
+        // 3. Verificar si el usuario ya existe
+        const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
+        if (existingUser) {
+            console.log(`Intento de registrar email existente: ${email}`);
+            return res.status(400).json({
+                success: false,
+                message: 'El email ya está registrado'
+            });
+        }
+
+        // 4. Validar fortaleza de contraseña
+        if (password.length < 6) {
+            return res.status(400).json({
+                success: false,
+                message: 'La contraseña debe tener al menos 6 caracteres'
+            });
+        }
+
+        // 5. Crear nuevo usuario
+        const newUser = new User({
+            name: name.trim(),
+            email: email.toLowerCase().trim(),
+            password: bcrypt.hashSync(password, 8),
+            role: role || 'auxiliary'
+        });
+
+        await newUser.save();
+
+        // 6. Generar token JWT
+        const token = jwt.sign(
+            {
+                id: newUser._id,
+                name: newUser.name,
+                email: newUser.email,
+                role: newUser.role
+            },
+            config.secret,
+            { expiresIn: config.jwtExpiration }
+        );
+
+        // 7. Respuesta exitosa
+        console.log(`Nuevo usuario registrado: ${newUser.email} (${newUser.role})`);
+        return res.status(201).json({
+            success: true,
+            message: 'Usuario registrado exitosamente',
+            data: {
+                id: newUser._id,
+                name: newUser.name,
+                email: newUser.email,
+                role: newUser.role,
+                accessToken: token
+            }
+        });
+
+    } catch (error) {
+        console.error('Error en authController.signup:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error al registrar usuario',
+            error: process.env.NODE_ENV === 'development' ? error.message : null
+        });
+    }
+};
+
+/**
+ * @desc    Iniciar sesión de usuario
+ * @route   POST /api/auth/signin
+ * @access  Public
+ */
+exports.signin = async (req, res) => {
+    try {
+        // 1. Validar campos requeridos
+        const { email, password } = req.body;
+        
+        if (!email || !password) {
+            console.log('Intento de login con campos faltantes');
+            return res.status(400).json({
+                success: false,
+                message: 'Email y contraseña son requeridos',
+                fields: {
+                    email: !email ? 'Email es requerido' : null,
+                    password: !password ? 'Contraseña es requerida' : null
+                }
+            });
+        }
+
+        // 2. Buscar usuario activo
         const user = await User.findOne({ 
-            email: req.body.email,
+            email: email.toLowerCase().trim(),
             status: true 
         });
 
         if (!user) {
+            console.log(`Intento de login con usuario no encontrado: ${email}`);
             return res.status(401).json({
                 success: false,
                 message: 'Credenciales inválidas'
             });
         }
 
-        // Validar contraseña
-        const validPassword = bcrypt.compareSync(req.body.password, user.password);
-        if (!validPassword) {
+        // 3. Validar contraseña
+        const isPasswordValid = bcrypt.compareSync(password, user.password);
+        if (!isPasswordValid) {
+            console.log(`Intento de login con contraseña incorrecta para: ${email}`);
             return res.status(401).json({
                 success: false,
                 message: 'Credenciales inválidas'
             });
         }
 
-        // Generar token (similar a otros módulos)
+        // 4. Generar token JWT
         const token = jwt.sign(
             {
                 id: user._id,
@@ -44,67 +154,65 @@ exports.signin = async (req, res) => {
                 role: user.role
             },
             config.secret,
-            { expiresIn: '24h' }
+            { expiresIn: config.jwtExpiration }
         );
 
-        // Respuesta exitosa
-        res.status(200).json({
+        // 5. Respuesta exitosa
+        console.log(`Login exitoso para: ${user.email} (${user.role})`);
+        return res.status(200).json({
             success: true,
-            id: user._id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            accessToken: token
+            message: 'Inicio de sesión exitoso',
+            data: {
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                accessToken: token
+            }
         });
 
     } catch (error) {
         console.error('Error en authController.signin:', error);
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
-            message: 'Error interno del servidor'
+            message: 'Error al iniciar sesión',
+            error: process.env.NODE_ENV === 'development' ? error.message : null
         });
     }
 };
 
-exports.signup = async (req, res) => {
+/**
+ * @desc    Verificar token
+ * @route   GET /api/auth/verify
+ * @access  Private
+ */
+exports.verifyToken = async (req, res) => {
     try {
-        // Validación básica
-        if (!req.body.name || !req.body.email || !req.body.password) {
-            return res.status(400).json({
+        // El middleware authJwt ya validó el token
+        const user = await User.findById(req.userId).select('-password');
+        
+        if (!user) {
+            return res.status(404).json({
                 success: false,
-                message: 'Nombre, email y contraseña son requeridos'
+                message: 'Usuario no encontrado'
             });
         }
 
-        // Verificar si el usuario ya existe
-        const existingUser = await User.findOne({ email: req.body.email });
-        if (existingUser) {
-            return res.status(400).json({
-                success: false,
-                message: 'El email ya está registrado'
-            });
-        }
-
-        // Crear nuevo usuario
-        const user = new User({
-            name: req.body.name,
-            email: req.body.email,
-            password: bcrypt.hashSync(req.body.password, 8),
-            role: req.body.role || 'auxiliar'
-        });
-
-        await user.save();
-
-        res.status(201).json({
+        return res.status(200).json({
             success: true,
-            message: 'Usuario registrado exitosamente'
+            data: {
+                id: user._id,
+                name: user.name,
+                email: user.email,
+                role: user.role
+            }
         });
 
     } catch (error) {
-        console.error('Error en authController.signup:', error);
-        res.status(500).json({
+        console.error('Error en authController.verifyToken:', error);
+        return res.status(500).json({
             success: false,
-            message: 'Error al registrar usuario'
+            message: 'Error al verificar token'
         });
     }
 };
