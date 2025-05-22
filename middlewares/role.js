@@ -1,25 +1,41 @@
-exports.checkRole = (allowedRoles) => {
+const checkRole = (...allowedRoles) => {
   return (req, res, next) => {
-    console.log('[ROLE] Usuario en request:', req.user); // Diagnóstico
-    
-    if (!req.user?.role) {
-      console.error('[ROLE] Error: Rol no definido en token');
-      return res.status(401).json({
+    if (!req.userRole) {
+      console.error("Intento de verificar rol sin token válido");
+      return res.status(500).json({
         success: false,
-        message: 'Token no contiene información de roles'
+        message: "Error al verificar rol"
       });
     }
 
-    if (req.user.role === 'admin') return next(); // Admin tiene acceso completo
-
-    if (!allowedRoles.includes(req.user.role)) {
-      console.error('[ROLE] Error: Rol no autorizado', req.user.role);
+    if (!allowedRoles.includes(req.userRole)) {
+      console.log(`Acceso denegado para rol ${req.userRole} en ruta ${req.path}`);
       return res.status(403).json({
         success: false,
-        message: `Requiere uno de estos roles: ${allowedRoles.join(', ')}`
+        message: "No tienes permisos para esta acción"
       });
     }
 
     next();
   };
+};
+
+// Funciones específicas por rol
+const isAdmin = (req, res, next) => {
+  return checkRole('admin')(req, res, next);
+};
+
+const isCoordinator = (req, res, next) => {
+  return checkRole('coordinator')(req, res, next);
+};
+
+const isAuxiliary = (req, res, next) => {
+  return checkRole('auxiliary')(req, res, next);
+};
+
+module.exports = {
+  checkRole,
+  isAdmin,
+  isCoordinator,
+  isAuxiliary
 };
