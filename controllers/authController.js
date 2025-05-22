@@ -79,11 +79,11 @@ exports.signup = async (req, res) => {
  */
 exports.signin = async (req, res) => {
     try {
-        // 1. Validar campos requeridos
+        // 1. Validación de campos requeridos
         const { email, password } = req.body;
         
         if (!email || !password) {
-            console.log('Intento de login con campos faltantes');
+            console.log('Intento de login sin credenciales completas');
             return res.status(400).json({
                 success: false,
                 message: 'Email y contraseña son requeridos',
@@ -94,22 +94,22 @@ exports.signin = async (req, res) => {
             });
         }
 
-        // 2. Buscar usuario activo
+        // 2. Buscar usuario activo (case-insensitive)
         const user = await User.findOne({ 
-            email: email.toLowerCase().trim(),
+            email: { $regex: new RegExp('^' + email.toLowerCase().trim() + '$', 'i') },
             status: true 
         });
 
         if (!user) {
-            console.log(`Intento de login con usuario no encontrado: ${email}`);
+            console.log(`Usuario no encontrado: ${email}`);
             return res.status(401).json({
                 success: false,
                 message: 'Credenciales inválidas'
             });
         }
 
-        // 3. Validar contraseña
-        const isPasswordValid = bcrypt.compareSync(password, user.password);
+        // 3. Validar contraseña (con comparación segura)
+        const isPasswordValid = await bcrypt.compare(password, user.password);
         if (!isPasswordValid) {
             console.log(`Intento de login con contraseña incorrecta para: ${email}`);
             return res.status(401).json({
@@ -118,7 +118,7 @@ exports.signin = async (req, res) => {
             });
         }
 
-        // 4. Generar token JWT
+        // 4. Generar token JWT (formato consistente)
         const token = jwt.sign(
             {
                 id: user._id,
@@ -130,7 +130,7 @@ exports.signin = async (req, res) => {
             { expiresIn: config.jwtExpiration }
         );
 
-        // 5. Respuesta exitosa
+        // 5. Respuesta exitosa (formato igual a otros módulos)
         console.log(`Login exitoso para: ${user.email} (${user.role})`);
         return res.status(200).json({
             success: true,
