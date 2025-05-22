@@ -2,24 +2,19 @@ const jwt = require('jsonwebtoken');
 const config = require('../config');
 
 exports.verifyToken = (req, res, next) => {
-  console.log('[AUTH] Headers recibidos:', req.headers); // Diagnóstico
+  // 1. Extraer token
+  const token = req.headers['authorization']?.split(' ')[1];
   
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  console.log('[AUTH] Token extraído:', token); // Diagnóstico
-
   if (!token) {
-    console.error('[AUTH] Error: Token no proporcionado');
     return res.status(401).json({
       success: false,
       message: 'Token no proporcionado'
     });
   }
 
+  // 2. Verificar token
   jwt.verify(token, config.SECRET, (err, decoded) => {
     if (err) {
-      console.error('[AUTH] Error al verificar token:', err.message); // Diagnóstico
       return res.status(401).json({
         success: false,
         message: 'Token inválido',
@@ -27,7 +22,15 @@ exports.verifyToken = (req, res, next) => {
       });
     }
     
-    console.log('[AUTH] Token decodificado:', decoded); // Diagnóstico
+    // 3. Asegurarse que el token tenga rol
+    if (!decoded.role) {
+      return res.status(401).json({
+        success: false,
+        message: 'Token no contiene información de rol'
+      });
+    }
+
+    // 4. Adjuntar usuario al request
     req.user = decoded;
     next();
   });

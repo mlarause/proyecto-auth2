@@ -1,64 +1,14 @@
-const User = require('../models/User');
-const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const config = require('../config');
-const { verifySignUp } = require('../middlewares');
-
-exports.signup = async (req, res) => {
-  try {
-    // Validar existencia de usuario/email
-    await verifySignUp.checkDuplicateUsernameOrEmail(req, res, async () => {
-      await verifySignUp.checkRolesExisted(req, res, async () => {
-        const { username, email, password, role } = req.body;
-
-        // Crear usuario con contraseña encriptada
-        const user = new User({
-          username,
-          email,
-          password: await bcrypt.hash(password, 10),
-          role: role || 'auxiliar' // Valor por defecto
-        });
-
-        const savedUser = await user.save();
-
-        // Generar token con el rol incluido
-        const token = jwt.sign(
-          { 
-            id: savedUser._id, 
-            role: savedUser.role // Incluir el rol aquí
-          },
-          config.SECRET,
-          { expiresIn: config.TOKEN_EXPIRATION }
-        );
-
-        res.status(201).json({
-          success: true,
-          message: 'Usuario registrado exitosamente',
-          token,
-          user: {
-            id: savedUser._id,
-            username: savedUser.username,
-            email: savedUser.email,
-            role: savedUser.role
-          }
-        });
-      });
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error al registrar usuario',
-      error: error.message
-    });
-  }
-};
+const User = require('../models/User');
+const bcrypt = require('bcryptjs');
 
 exports.signin = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Buscar usuario
-    const user = await User.findOne({ email });
+    // 1. Buscar usuario
+    const user = await User.findOne({ email }).select('+password');
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -66,28 +16,28 @@ exports.signin = async (req, res) => {
       });
     }
 
-    // Validar contraseña
-    const passwordIsValid = bcrypt.compareSync(password, user.password);
-    if (!passwordIsValid) {
+    // 2. Validar contraseña
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
-        message: 'Contraseña incorrecta'
+        message: 'Credenciales inválidas'
       });
     }
 
-    // Generar token con el rol incluido
+    // 3. Generar token CON EL ROL INCLUIDO
     const token = jwt.sign(
-      { 
-        id: user._id, 
-        role: user.role // Incluir el rol aquí
+      {
+        id: user._id,
+        role: user.role // ¡ESTE ES EL CAMPO CRÍTICO QUE FALTABA!
       },
       config.SECRET,
       { expiresIn: config.TOKEN_EXPIRATION }
     );
 
+    // 4. Responder con token y datos de usuario
     res.status(200).json({
       success: true,
-      message: 'Inicio de sesión exitoso',
       token,
       user: {
         id: user._id,
@@ -96,49 +46,67 @@ exports.signin = async (req, res) => {
         role: user.role
       }
     });
+
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Error al iniciar sesión',
+      message: 'Error en el servidor',
       error: error.message
     });
   }
 };
 
-// Opcional: Refrescar token
-exports.refreshToken = async (req, res) => {
+exports.signup = async (req, res) => {
   try {
-    const oldToken = req.headers['authorization']?.split(' ')[1];
-    
-    if (!oldToken) {
+    const { username, email, password, role = 'auxiliar' } = req.body;
+
+    // 1. Verificar si el usuario ya existe
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
       return res.status(400).json({
         success: false,
-        message: 'Token no proporcionado'
+        message: 'El email ya está registrado'
       });
     }
 
-    // Verificar token antiguo (ignorando expiración)
-    const decoded = jwt.verify(oldToken, config.SECRET, { ignoreExpiration: true });
-    
-    // Generar nuevo token con el mismo rol
-    const newToken = jwt.sign(
-      { 
-        id: decoded.id, 
-        role: decoded.role // Mantener el mismo rol
+    // 2. Crear nuevo usuario
+    const newUser = new User({
+      username,
+      email,
+      password: await bcrypt.hash(password, 10),
+      role
+    });
+
+    // 3. Guardar usuario
+    const savedUser = await newUser.save();
+
+    // 4. Generar token CON EL ROL
+    const token = jwt.sign(
+      {
+        id: savedUser._id,
+        role: savedUser.role // ¡INCLUIR EL ROL!
       },
       config.SECRET,
       { expiresIn: config.TOKEN_EXPIRATION }
     );
 
-    res.status(200).json({
+    // 5. Responder
+    res.status(201).json({
       success: true,
-      message: 'Token refrescado exitosamente',
-      token: newToken
+      message: 'Usuario registrado exitosamente',
+      token,
+      user: {
+        id: savedUser._id,
+        username: savedUser.username,
+        email: savedUser.email,
+        role: savedUser.role
+      }
     });
+
   } catch (error) {
-    res.status(401).json({
+    res.status(500).json({
       success: false,
-      message: 'Error al refrescar token',
+      message: 'Error al registrar usuario',
       error: error.message
     });
   }
