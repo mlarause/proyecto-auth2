@@ -1,20 +1,22 @@
 exports.checkRole = (allowedRoles = []) => {
   return (req, res, next) => {
-    if (!req.userRole) {
+    if (!req.user || !req.user.role) {
       return res.status(401).json({
         success: false,
         message: 'Usuario no autenticado'
       });
     }
 
-    // Admin tiene acceso completo
-    if (req.userRole === 'admin') return next();
+    // Admin tiene acceso completo a todo
+    if (req.user.role === 'admin') {
+      return next();
+    }
 
-    // Verificar si el rol está permitido
-    if (!allowedRoles.includes(req.userRole)) {
+    // Verificar si el rol del usuario está permitido
+    if (!allowedRoles.includes(req.user.role)) {
       return res.status(403).json({
         success: false,
-        message: 'No tienes permisos para esta acción'
+        message: `Acceso denegado. Requiere rol: ${allowedRoles.join(' o ')}`
       });
     }
 

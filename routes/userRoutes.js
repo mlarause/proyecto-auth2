@@ -3,7 +3,7 @@ const router = express.Router();
 const userController = require('../controllers/userController');
 const { authJwt, verifySignUp, role } = require('../middlewares');
 
-// Todas las rutas requieren autenticación
+// Aplicar autenticación a todas las rutas de usuarios
 router.use(authJwt.verifyToken);
 
 // GET /api/users - Solo Admin

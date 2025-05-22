@@ -2,31 +2,40 @@ const jwt = require('jsonwebtoken');
 const config = require('../config');
 
 exports.verifyToken = (req, res, next) => {
-  // Obtener token de headers, cookies o query params
-  const token = req.headers['x-access-token'] || 
-               req.headers['authorization']?.replace('Bearer ', '') || 
-               req.cookies?.token || 
-               req.query?.token;
+  // 1. Obtener token de múltiples fuentes
+  let token = req.headers['x-access-token'] || 
+             req.headers['authorization'] || 
+             req.cookies?.token;
 
+  // 2. Verificar existencia del token
   if (!token) {
     return res.status(401).json({
       success: false,
-      message: 'Token de autenticación no proporcionado'
+      message: 'Acceso denegado: Token no proporcionado'
     });
   }
 
-  // Verificar token
+  // 3. Limpiar token si viene con 'Bearer'
+  if (token.startsWith('Bearer ')) {
+    token = token.slice(7, token.length);
+  }
+
+  // 4. Verificar token
   jwt.verify(token, config.SECRET, (err, decoded) => {
     if (err) {
       return res.status(401).json({
         success: false,
-        message: 'Token inválido o expirado'
+        message: 'Token inválido o expirado',
+        error: err.name === 'TokenExpiredError' ? 'Token expirado' : 'Token inválido'
       });
     }
+
+    // 5. Asignar información del usuario al request
+    req.user = {
+      id: decoded.id,
+      role: decoded.role
+    };
     
-    // Asignar usuario al request
-    req.userId = decoded.id;
-    req.userRole = decoded.role;
     next();
   });
 };
