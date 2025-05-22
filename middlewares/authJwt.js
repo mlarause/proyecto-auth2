@@ -2,10 +2,12 @@ const jwt = require('jsonwebtoken');
 const config = require('../config');
 
 exports.verifyToken = (req, res, next) => {
-  // Obtener token de múltiples fuentes
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Extraer el token del header 'Bearer token'
-  
+  // Obtener token de headers, cookies o query params
+  const token = req.headers['x-access-token'] || 
+               req.headers['authorization']?.replace('Bearer ', '') || 
+               req.cookies?.token || 
+               req.query?.token;
+
   if (!token) {
     return res.status(401).json({
       success: false,
@@ -22,11 +24,9 @@ exports.verifyToken = (req, res, next) => {
       });
     }
     
-    // Asignar información del usuario al request
-    req.user = {
-      id: decoded.id,
-      role: decoded.role
-    };
+    // Asignar usuario al request
+    req.userId = decoded.id;
+    req.userRole = decoded.role;
     next();
   });
 };
