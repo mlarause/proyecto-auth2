@@ -4,8 +4,7 @@ const role = require('./role');
 // Importa otros middlewares si los tienes (ej: auth.js, verifySupplier.js)
 
 module.exports = {
-  authJwt,
-  verifySignUp,
-  role
-  // Exporta otros middlewares aquí
+  authJwt: require('./authJwt'),
+  verifySignUp: require('./verifySignUp'),
+  role: require('./role')
 };

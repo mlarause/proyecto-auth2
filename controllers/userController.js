@@ -1,7 +1,5 @@
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const config = require('../config');
 
 // Obtener todos los usuarios (Solo Admin)
 exports.getAllUsers = async (req, res) => {
