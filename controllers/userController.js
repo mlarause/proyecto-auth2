@@ -3,17 +3,22 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const config = require('../config');
 
-// [1] Obtener todos los usuarios (Solo Admin)
+// [1] Obtener todos los usuarios (SOLO ADMIN)
 exports.getAllUsers = async (req, res) => {
   try {
-    const users = await User.find()
-      .select('-password')
-      .populate('supplier', 'name contact'); // Relación con proveedor si existe
-    
+    // Verificar rol de admin (doble validación)
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Requiere rol de administrador'
+      });
+    }
+
+    const users = await User.find().select('-password -__v');
     res.status(200).json({
       success: true,
       count: users.length,
-      users
+      data: users
     });
   } catch (error) {
     res.status(500).json({
@@ -24,13 +29,11 @@ exports.getAllUsers = async (req, res) => {
   }
 };
 
-// [2] Obtener usuario por ID (con control de acceso)
+// [2] Obtener usuario por ID (con control de roles)
 exports.getUserById = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id)
-      .select('-password')
-      .populate('supplier', 'name contact'); // Relación con proveedor
-
+    const user = await User.findById(req.params.id).select('-password -__v');
+    
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -38,25 +41,25 @@ exports.getUserById = async (req, res) => {
       });
     }
 
-    // Validación para auxiliares (solo pueden verse a sí mismos)
-    if (req.userRole === 'auxiliar' && req.userId !== user._id.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: 'No autorizado para ver este usuario'
-      });
-    }
-
-    // Validación para coordinadores (no pueden ver admin)
-    if (req.userRole === 'coordinador' && user.role === 'admin') {
+    // Auxiliar solo puede verse a sí mismo
+    if (req.user.role === 'auxiliar' && req.user.id !== user._id.toString()) {
       return res.status(403).json({
         success: false,
         message: 'No tienes permisos para ver este usuario'
       });
     }
 
+    // Coordinador no puede ver admin
+    if (req.user.role === 'coordinador' && user.role === 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'No autorizado para ver este usuario'
+      });
+    }
+
     res.status(200).json({
       success: true,
-      user
+      data: user
     });
   } catch (error) {
     res.status(500).json({
@@ -67,12 +70,12 @@ exports.getUserById = async (req, res) => {
   }
 };
 
-// [3] Crear usuario (Admin y Coordinador)
+// [3] Crear usuario (ADMIN y COORDINADOR)
 exports.createUser = async (req, res) => {
   try {
-    const { username, email, password, role, supplier } = req.body;
+    const { username, email, password, role } = req.body;
 
-    // Validación básica
+    // Validar campos
     if (!username || !email || !password || !role) {
       return res.status(400).json({
         success: false,
@@ -80,34 +83,33 @@ exports.createUser = async (req, res) => {
       });
     }
 
+    // Coordinador no puede crear admin
+    if (req.user.role === 'coordinador' && role === 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'No puedes crear usuarios con rol de administrador'
+      });
+    }
+
     const newUser = new User({
       username,
       email,
       password: await bcrypt.hash(password, 10),
-      role,
-      supplier // Relación con proveedor si aplica
+      role
     });
 
     const savedUser = await newUser.save();
 
-    // Generar token JWT (opcional para creación)
-    const token = jwt.sign(
-      { id: savedUser._id, role: savedUser.role },
-      config.SECRET,
-      { expiresIn: config.TOKEN_EXPIRATION }
-    );
-
     res.status(201).json({
       success: true,
       message: 'Usuario creado exitosamente',
-      user: {
+      data: {
         id: savedUser._id,
         username: savedUser.username,
         email: savedUser.email,
         role: savedUser.role,
-        supplier: savedUser.supplier
-      },
-      token
+        createdAt: savedUser.createdAt
+      }
     });
   } catch (error) {
     res.status(500).json({
@@ -118,16 +120,13 @@ exports.createUser = async (req, res) => {
   }
 };
 
-// [4] Actualizar usuario (Admin y Coordinador)
+// [4] Actualizar usuario (ADMIN y COORDINADOR)
 exports.updateUser = async (req, res) => {
   try {
-    const { username, email, role, supplier } = req.body;
+    const { username, email, role } = req.body;
 
-    // Preparar datos a actualizar
-    const updateData = { username, email, role, supplier };
-    
-    // No permitir que coordinadores actualicen a admin
-    if (req.userRole === 'coordinador' && role === 'admin') {
+    // Coordinador no puede actualizar a admin
+    if (req.user.role === 'coordinador' && role === 'admin') {
       return res.status(403).json({
         success: false,
         message: 'No puedes asignar rol de administrador'
@@ -136,9 +135,9 @@ exports.updateUser = async (req, res) => {
 
     const updatedUser = await User.findByIdAndUpdate(
       req.params.id,
-      updateData,
+      { username, email, role },
       { new: true, runValidators: true }
-    ).select('-password');
+    ).select('-password -__v');
 
     if (!updatedUser) {
       return res.status(404).json({
@@ -150,7 +149,7 @@ exports.updateUser = async (req, res) => {
     res.status(200).json({
       success: true,
       message: 'Usuario actualizado correctamente',
-      user: updatedUser
+      data: updatedUser
     });
   } catch (error) {
     res.status(500).json({
@@ -161,9 +160,25 @@ exports.updateUser = async (req, res) => {
   }
 };
 
-// [5] Eliminar usuario (Solo Admin)
+// [5] Eliminar usuario (SOLO ADMIN)
 exports.deleteUser = async (req, res) => {
   try {
+    // Validar que sea admin (doble validación)
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Requiere rol de administrador'
+      });
+    }
+
+    // Prevenir auto-eliminación
+    if (req.user.id === req.params.id) {
+      return res.status(400).json({
+        success: false,
+        message: 'No puedes eliminarte a ti mismo'
+      });
+    }
+
     const deletedUser = await User.findByIdAndDelete(req.params.id);
     
     if (!deletedUser) {
@@ -187,45 +202,11 @@ exports.deleteUser = async (req, res) => {
   }
 };
 
-// [6] Cambiar contraseña (para el propio usuario)
-exports.changePassword = async (req, res) => {
-  try {
-    const { currentPassword, newPassword } = req.body;
-    const user = await User.findById(req.userId);
-
-    // Verificar contraseña actual
-    const isMatch = await bcrypt.compare(currentPassword, user.password);
-    if (!isMatch) {
-      return res.status(400).json({
-        success: false,
-        message: 'Contraseña actual incorrecta'
-      });
-    }
-
-    // Actualizar contraseña
-    user.password = await bcrypt.hash(newPassword, 10);
-    await user.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Contraseña actualizada correctamente'
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error al cambiar contraseña',
-      error: error.message
-    });
-  }
-};
-
-// [7] Obtener perfil del usuario logueado
+// [6] Obtener perfil del usuario logueado
 exports.getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.userId)
-      .select('-password')
-      .populate('supplier', 'name contact');
-
+    const user = await User.findById(req.user.id).select('-password -__v');
+    
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -235,40 +216,12 @@ exports.getProfile = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      user
+      data: user
     });
   } catch (error) {
     res.status(500).json({
       success: false,
       message: 'Error al obtener perfil',
-      error: error.message
-    });
-  }
-};
-
-// [8] Buscar usuarios por criterios (Admin)
-exports.searchUsers = async (req, res) => {
-  try {
-    const { role, username, email } = req.query;
-    const query = {};
-
-    if (role) query.role = role;
-    if (username) query.username = { $regex: username, $options: 'i' };
-    if (email) query.email = { $regex: email, $options: 'i' };
-
-    const users = await User.find(query)
-      .select('-password')
-      .populate('supplier', 'name contact');
-
-    res.status(200).json({
-      success: true,
-      count: users.length,
-      users
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error en búsqueda de usuarios',
       error: error.message
     });
   }
