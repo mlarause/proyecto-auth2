@@ -1,37 +1,49 @@
-const jwt = require('jsonwebtoken');
-const config = require('../config');
+const jwt = require("jsonwebtoken");
+const config = require("../config/auth.config");
 
-exports.verifyToken = (req, res, next) => {
-  // 1. Extraer token
-  const token = req.headers['authorization']?.split(' ')[1];
-  
+const verifyToken = (req, res, next) => {
+  // Obtener token de headers o cookies
+  const token = req.headers["x-access-token"] || 
+                req.headers["authorization"]?.split(' ')[1] || 
+                req.cookies?.token;
+
   if (!token) {
-    return res.status(401).json({
+    console.log("Intento de acceso sin token");
+    return res.status(403).json({
       success: false,
-      message: 'Token no proporcionado'
+      message: "No se proporcionó token"
     });
   }
 
-  // 2. Verificar token
-  jwt.verify(token, config.SECRET, (err, decoded) => {
-    if (err) {
-      return res.status(401).json({
-        success: false,
-        message: 'Token inválido',
-        error: err.message
-      });
-    }
+  try {
+    // Verificar y decodificar token
+    const decoded = jwt.verify(token, config.secret);
     
-    // 3. Asegurarse que el token tenga rol
+    // Verificar que el token tenga rol
     if (!decoded.role) {
+      console.error("Token sin rol:", decoded);
       return res.status(401).json({
         success: false,
-        message: 'Token no contiene información de rol'
+        message: "Token no contiene información de rol"
       });
     }
 
-    // 4. Adjuntar usuario al request
-    req.user = decoded;
+    // Adjuntar información al request
+    req.userId = decoded.id;
+    req.userRole = decoded.role;
+    req.userEmail = decoded.email;
+
+    console.log(`Acceso autorizado para ${decoded.email} (${decoded.role})`);
     next();
-  });
+  } catch (err) {
+    console.error("Error al verificar token:", err.message);
+    return res.status(401).json({
+      success: false,
+      message: "Token inválido o expirado"
+    });
+  }
+};
+
+module.exports = {
+  verifyToken
 };

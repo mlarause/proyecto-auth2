@@ -9,7 +9,7 @@ const checkRole = (...allowedRoles) => {
     }
 
     if (!allowedRoles.includes(req.userRole)) {
-      console.log(`Acceso denegado para rol ${req.userRole} en ruta ${req.path}`);
+      console.log(`Acceso denegado para ${req.userEmail} (${req.userRole}) en ruta ${req.path}`);
       return res.status(403).json({
         success: false,
         message: "No tienes permisos para esta acción"
@@ -25,17 +25,17 @@ const isAdmin = (req, res, next) => {
   return checkRole('admin')(req, res, next);
 };
 
-const isCoordinator = (req, res, next) => {
-  return checkRole('coordinator')(req, res, next);
+const isCoordinador = (req, res, next) => {
+  return checkRole('coordinador')(req, res, next);
 };
 
-const isAuxiliary = (req, res, next) => {
-  return checkRole('auxiliary')(req, res, next);
+const isAuxiliar = (req, res, next) => {
+  return checkRole('auxiliar')(req, res, next);
 };
 
 module.exports = {
   checkRole,
   isAdmin,
-  isCoordinator,
-  isAuxiliary
+  isCoordinador,
+  isAuxiliar
 };

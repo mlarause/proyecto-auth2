@@ -1,113 +1,122 @@
-const jwt = require('jsonwebtoken');
-const config = require('../config');
-const User = require('../models/User');
-const bcrypt = require('bcryptjs');
+const db = require("../models");
+const User = db.user;
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const config = require("../config/auth.config");
 
 exports.signin = async (req, res) => {
   try {
-    const { email, password } = req.body;
-
-    // 1. Buscar usuario
-    const user = await User.findOne({ email }).select('+password');
-    if (!user) {
-      return res.status(404).json({
+    // 1. Validar entrada
+    if (!req.body.email || !req.body.password) {
+      console.log("Faltan credenciales");
+      return res.status(400).json({
         success: false,
-        message: 'Usuario no encontrado'
+        message: "Email y contraseña son requeridos"
       });
     }
 
-    // 2. Validar contraseña
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
+    // 2. Buscar usuario (incluyendo solo usuarios activos)
+    const user = await User.findOne({ 
+      email: req.body.email,
+      status: true 
+    }).exec();
+
+    if (!user) {
+      console.log(`Usuario no encontrado o inactivo: ${req.body.email}`);
       return res.status(401).json({
         success: false,
-        message: 'Credenciales inválidas'
+        message: "Credenciales inválidas"
       });
     }
 
-    // 3. Generar token CON EL ROL INCLUIDO
+    // 3. Validar contraseña
+    const passwordIsValid = bcrypt.compareSync(
+      req.body.password,
+      user.password
+    );
+
+    if (!passwordIsValid) {
+      console.log(`Contraseña incorrecta para usuario: ${req.body.email}`);
+      return res.status(401).json({
+        success: false,
+        message: "Credenciales inválidas"
+      });
+    }
+
+    // 4. Generar token con información completa
     const token = jwt.sign(
       {
         id: user._id,
-        role: user.role // ¡ESTE ES EL CAMPO CRÍTICO QUE FALTABA!
-      },
-      config.SECRET,
-      { expiresIn: config.TOKEN_EXPIRATION }
-    );
-
-    // 4. Responder con token y datos de usuario
-    res.status(200).json({
-      success: true,
-      token,
-      user: {
-        id: user._id,
-        username: user.username,
+        name: user.name,
         email: user.email,
         role: user.role
+      },
+      config.secret,
+      {
+        expiresIn: config.jwtExpiration
       }
+    );
+
+    // 5. Responder con éxito
+    console.log(`Login exitoso para usuario: ${user.email} (${user.role})`);
+    return res.status(200).json({
+      success: true,
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      accessToken: token
     });
 
   } catch (error) {
-    res.status(500).json({
+    console.error("Error en signin:", error);
+    return res.status(500).json({
       success: false,
-      message: 'Error en el servidor',
-      error: error.message
+      message: "Error interno del servidor"
     });
   }
 };
 
 exports.signup = async (req, res) => {
   try {
-    const { username, email, password, role = 'auxiliar' } = req.body;
-
-    // 1. Verificar si el usuario ya existe
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
+    // Validar campos requeridos
+    if (!req.body.name || !req.body.email || !req.body.password) {
       return res.status(400).json({
         success: false,
-        message: 'El email ya está registrado'
+        message: "Nombre, email y contraseña son requeridos"
       });
     }
 
-    // 2. Crear nuevo usuario
-    const newUser = new User({
-      username,
-      email,
-      password: await bcrypt.hash(password, 10),
-      role
+    // Verificar si el usuario ya existe
+    const existingUser = await User.findOne({ email: req.body.email }).exec();
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: "El email ya está registrado"
+      });
+    }
+
+    // Crear nuevo usuario
+    const user = new User({
+      name: req.body.name,
+      email: req.body.email,
+      password: bcrypt.hashSync(req.body.password, 8),
+      role: req.body.role || "auxiliary",
+      status: true
     });
 
-    // 3. Guardar usuario
-    const savedUser = await newUser.save();
+    await user.save();
 
-    // 4. Generar token CON EL ROL
-    const token = jwt.sign(
-      {
-        id: savedUser._id,
-        role: savedUser.role // ¡INCLUIR EL ROL!
-      },
-      config.SECRET,
-      { expiresIn: config.TOKEN_EXPIRATION }
-    );
-
-    // 5. Responder
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
-      message: 'Usuario registrado exitosamente',
-      token,
-      user: {
-        id: savedUser._id,
-        username: savedUser.username,
-        email: savedUser.email,
-        role: savedUser.role
-      }
+      message: "Usuario registrado exitosamente"
     });
 
   } catch (error) {
-    res.status(500).json({
+    console.error("Error en signup:", error);
+    return res.status(500).json({
       success: false,
-      message: 'Error al registrar usuario',
-      error: error.message
+      message: "Error al registrar usuario"
     });
   }
 };
