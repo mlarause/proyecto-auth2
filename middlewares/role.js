@@ -1,6 +1,6 @@
 exports.checkRole = (allowedRoles = []) => {
   return (req, res, next) => {
-    if (!req.userRole) {
+    if (!req.user || !req.user.role) {
       return res.status(401).json({
         success: false,
         message: 'Usuario no autenticado'
@@ -8,10 +8,12 @@ exports.checkRole = (allowedRoles = []) => {
     }
 
     // Admin tiene acceso completo
-    if (req.userRole === 'admin') return next();
+    if (req.user.role === 'admin') {
+      return next();
+    }
 
     // Verificar si el rol está permitido
-    if (!allowedRoles.includes(req.userRole)) {
+    if (!allowedRoles.includes(req.user.role)) {
       return res.status(403).json({
         success: false,
         message: 'No tienes permisos para esta acción'

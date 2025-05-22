@@ -2,15 +2,14 @@ const jwt = require('jsonwebtoken');
 const config = require('../config');
 
 exports.verifyToken = (req, res, next) => {
-  // Obtener token de headers o cookies
-  const token = req.headers['x-access-token'] || 
-               req.headers['authorization']?.replace('Bearer ', '') || 
-               req.cookies?.token;
-
+  // Obtener token de múltiples fuentes
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; // Extraer el token del header 'Bearer token'
+  
   if (!token) {
     return res.status(401).json({
       success: false,
-      message: 'Acceso no autorizado: Token no proporcionado'
+      message: 'Token de autenticación no proporcionado'
     });
   }
 
@@ -22,10 +21,12 @@ exports.verifyToken = (req, res, next) => {
         message: 'Token inválido o expirado'
       });
     }
-
-    // Asignar usuario al request
-    req.userId = decoded.id;
-    req.userRole = decoded.role;
+    
+    // Asignar información del usuario al request
+    req.user = {
+      id: decoded.id,
+      role: decoded.role
+    };
     next();
   });
 };

@@ -7,7 +7,7 @@ exports.getAllUsers = async (req, res) => {
     const users = await User.find().select('-password');
     res.status(200).json({
       success: true,
-      users
+      users: users
     });
   } catch (error) {
     res.status(500).json({
@@ -18,7 +18,7 @@ exports.getAllUsers = async (req, res) => {
   }
 };
 
-// Obtener usuario específico
+// Obtener usuario específico (con validación de roles)
 exports.getUserById = async (req, res) => {
   try {
     const user = await User.findById(req.params.id).select('-password');
@@ -30,24 +30,25 @@ exports.getUserById = async (req, res) => {
       });
     }
 
-    // Validaciones de acceso
-    if (req.userRole === 'auxiliar' && req.userId !== user._id.toString()) {
+    // Auxiliar solo puede verse a sí mismo
+    if (req.user.role === 'auxiliar' && req.user.id !== user._id.toString()) {
       return res.status(403).json({
         success: false,
         message: 'No tienes permisos para ver este usuario'
       });
     }
 
-    if (req.userRole === 'coordinador' && user.role === 'admin') {
+    // Coordinador no puede ver admin
+    if (req.user.role === 'coordinador' && user.role === 'admin') {
       return res.status(403).json({
         success: false,
-        message: 'No puedes ver usuarios admin'
+        message: 'No tienes permisos para ver este usuario'
       });
     }
 
     res.status(200).json({
       success: true,
-      user
+      user: user
     });
   } catch (error) {
     res.status(500).json({

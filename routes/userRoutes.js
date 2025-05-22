@@ -3,7 +3,7 @@ const router = express.Router();
 const userController = require('../controllers/userController');
 const { authJwt, verifySignUp, role } = require('../middlewares');
 
-// Aplicar autenticación a todas las rutas
+// Todas las rutas requieren autenticación primero
 router.use(authJwt.verifyToken);
 
 // GET /api/users - Solo Admin
@@ -13,7 +13,7 @@ router.get(
   userController.getAllUsers
 );
 
-// GET /api/users/:id - Acceso diferenciado por rol
+// GET /api/users/:id - Acceso controlado en el controlador
 router.get(
   '/:id',
   userController.getUserById
