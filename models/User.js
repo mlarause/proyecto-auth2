@@ -20,10 +20,10 @@ const userSchema = new mongoose.Schema({
     minlength: 6
   },
   role: {
-    type: String,
-    enum: ['admin', 'coordinador', 'auxiliar'],
-    default: 'auxiliar'
-  },
+  type: String,
+  enum: ['admin', 'coordinador', 'auxiliar'],
+  required: true
+},
   createdAt: {
     type: Date,
     default: Date.now

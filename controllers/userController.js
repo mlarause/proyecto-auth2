@@ -1,43 +1,31 @@
 const User = require('../models/User');
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const config = require('../config');
 
-// [1] Obtener todos los usuarios (SOLO ADMIN)
+// Obtener todos los usuarios (Solo Admin)
 exports.getAllUsers = async (req, res) => {
+  console.log('[CONTROLLER] Ejecutando getAllUsers'); // Diagnóstico
   try {
-    // Verificación doble de rol (middleware + controlador)
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Requiere rol de administrador'
-      });
-    }
-
-    const users = await User.find()
-      .select('-password -__v')
-      .sort({ createdAt: -1 }); // Ordenar por más reciente
-
+    const users = await User.find().select('-password');
+    console.log('[CONTROLLER] Usuarios encontrados:', users.length); // Diagnóstico
     res.status(200).json({
       success: true,
-      count: users.length,
       data: users
     });
   } catch (error) {
+    console.error('[CONTROLLER] Error en getAllUsers:', error.message); // Diagnóstico
     res.status(500).json({
       success: false,
-      message: 'Error al obtener usuarios',
-      error: error.message
+      message: 'Error al obtener usuarios'
     });
   }
 };
 
-// [2] Obtener usuario específico (con control de acceso)
+
+// Obtener usuario específico
 exports.getUserById = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id)
-      .select('-password -__v');
-
+    const user = await User.findById(req.params.id).select('-password');
+    
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -45,7 +33,7 @@ exports.getUserById = async (req, res) => {
       });
     }
 
-    // Auxiliar solo puede verse a sí mismo
+    // Validaciones de acceso
     if (req.user.role === 'auxiliar' && req.user.id !== user._id.toString()) {
       return res.status(403).json({
         success: false,
@@ -53,17 +41,16 @@ exports.getUserById = async (req, res) => {
       });
     }
 
-    // Coordinador no puede ver admin
     if (req.user.role === 'coordinador' && user.role === 'admin') {
       return res.status(403).json({
         success: false,
-        message: 'No autorizado para ver este usuario'
+        message: 'No puedes ver usuarios admin'
       });
     }
 
     res.status(200).json({
       success: true,
-      data: user
+      user
     });
   } catch (error) {
     res.status(500).json({
@@ -74,45 +61,28 @@ exports.getUserById = async (req, res) => {
   }
 };
 
-// [3] Crear usuario (ADMIN y COORDINADOR)
+// Crear usuario (Admin y Coordinador)
 exports.createUser = async (req, res) => {
   try {
     const { username, email, password, role } = req.body;
 
-    // Validación de campos requeridos
-    if (!username || !email || !password || !role) {
-      return res.status(400).json({
-        success: false,
-        message: 'Todos los campos son requeridos'
-      });
-    }
-
-    // Coordinador no puede crear admin
-    if (req.user.role === 'coordinador' && role === 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'No puedes crear usuarios con rol de administrador'
-      });
-    }
-
-    const newUser = new User({
+    const user = new User({
       username,
       email,
       password: await bcrypt.hash(password, 10),
       role
     });
 
-    const savedUser = await newUser.save();
-
+    const savedUser = await user.save();
+    
     res.status(201).json({
       success: true,
       message: 'Usuario creado exitosamente',
-      data: {
+      user: {
         id: savedUser._id,
         username: savedUser.username,
         email: savedUser.email,
-        role: savedUser.role,
-        createdAt: savedUser.createdAt
+        role: savedUser.role
       }
     });
   } catch (error) {
@@ -124,27 +94,14 @@ exports.createUser = async (req, res) => {
   }
 };
 
-// [4] Actualizar usuario (ADMIN y COORDINADOR)
+// Actualizar usuario (Admin y Coordinador)
 exports.updateUser = async (req, res) => {
   try {
-    const { username, email, role } = req.body;
-
-    // Coordinador no puede actualizar a admin
-    if (req.user.role === 'coordinador' && role === 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'No puedes asignar rol de administrador'
-      });
-    }
-
     const updatedUser = await User.findByIdAndUpdate(
       req.params.id,
-      { username, email, role },
-      { 
-        new: true,
-        runValidators: true
-      }
-    ).select('-password -__v');
+      { $set: req.body },
+      { new: true }
+    ).select('-password');
 
     if (!updatedUser) {
       return res.status(404).json({
@@ -156,7 +113,7 @@ exports.updateUser = async (req, res) => {
     res.status(200).json({
       success: true,
       message: 'Usuario actualizado correctamente',
-      data: updatedUser
+      user: updatedUser
     });
   } catch (error) {
     res.status(500).json({
@@ -167,102 +124,30 @@ exports.updateUser = async (req, res) => {
   }
 };
 
-// [5] Eliminar usuario (SOLO ADMIN)
+// Eliminar usuario (Solo Admin)
 exports.deleteUser = async (req, res) => {
+  console.log('[CONTROLLER] Ejecutando deleteUser para ID:', req.params.id); // Diagnóstico
   try {
-    // Validación doble de rol
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Requiere rol de administrador'
-      });
-    }
-
-    // Prevenir auto-eliminación
-    if (req.user.id === req.params.id) {
-      return res.status(400).json({
-        success: false,
-        message: 'No puedes eliminarte a ti mismo'
-      });
-    }
-
     const deletedUser = await User.findByIdAndDelete(req.params.id);
     
     if (!deletedUser) {
+      console.log('[CONTROLLER] Usuario no encontrado para eliminar'); // Diagnóstico
       return res.status(404).json({
         success: false,
         message: 'Usuario no encontrado'
       });
     }
 
+    console.log('[CONTROLLER] Usuario eliminado:', deletedUser._id); // Diagnóstico
     res.status(200).json({
       success: true,
-      message: 'Usuario eliminado correctamente',
-      deletedUserId: deletedUser._id
+      message: 'Usuario eliminado correctamente'
     });
   } catch (error) {
+    console.error('[CONTROLLER] Error al eliminar usuario:', error.message); // Diagnóstico
     res.status(500).json({
       success: false,
-      message: 'Error al eliminar usuario',
-      error: error.message
-    });
-  }
-};
-
-// [6] Obtener perfil del usuario logueado
-exports.getProfile = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id)
-      .select('-password -__v');
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'Usuario no encontrado'
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      data: user
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error al obtener perfil',
-      error: error.message
-    });
-  }
-};
-
-// [7] Cambiar contraseña
-exports.changePassword = async (req, res) => {
-  try {
-    const { currentPassword, newPassword } = req.body;
-    const user = await User.findById(req.user.id);
-
-    // Verificar contraseña actual
-    const isMatch = await bcrypt.compare(currentPassword, user.password);
-    if (!isMatch) {
-      return res.status(400).json({
-        success: false,
-        message: 'Contraseña actual incorrecta'
-      });
-    }
-
-    // Actualizar contraseña
-    user.password = await bcrypt.hash(newPassword, 10);
-    await user.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Contraseña actualizada correctamente'
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error al cambiar contraseña',
-      error: error.message
+      message: 'Error al eliminar usuario'
     });
   }
 };
