@@ -79,77 +79,69 @@ exports.signup = async (req, res) => {
  */
 exports.signin = async (req, res) => {
     try {
-        // 1. Validación de entrada mejorada
         const { email, password } = req.body;
-        
-        if (!email?.trim() || !password?.trim()) {
-            console.log('Intento de login con credenciales vacías');
+
+        // 1. Validación mejorada de entrada
+        if (!email || !password) {
             return res.status(400).json({
                 success: false,
-                message: 'Email y contraseña son requeridos',
-                fields: {
-                    email: !email?.trim() ? 'Email es requerido' : null,
-                    password: !password?.trim() ? 'Contraseña es requerida' : null
-                }
+                message: 'Email y contraseña son requeridos'
             });
         }
 
-        // 2. Búsqueda robusta de usuario (case-insensitive y con trim)
+        // 2. Búsqueda exacta del usuario (case-sensitive)
         const user = await User.findOne({ 
-            email: { $regex: new RegExp(`^${email.trim()}$`, 'i') },
-            status: true 
-        }).select('+password'); // Asegurar que traiga el campo password
+            email: email.trim() // Búsqueda exacta
+        }).select('+password +status');
 
-        if (!user) {
-            console.log(`Usuario no encontrado o inactivo: ${email.trim()}`);
+        if (!user || user.status !== true) {
+            console.log(`Usuario no encontrado o inactivo: ${email}`);
             return res.status(401).json({
                 success: false,
                 message: 'Credenciales inválidas'
             });
         }
 
-        // 3. Comparación segura de contraseñas con bcrypt
+        // 3. Comparación directa de contraseñas (para debugging)
+        console.log(`Contraseña recibida: ${password}`);
+        console.log(`Contraseña almacenada: ${user.password}`);
+
+        // 4. Comparación con bcrypt
         const isMatch = await bcrypt.compare(password.trim(), user.password);
         if (!isMatch) {
-            console.log(`Contraseña incorrecta para usuario: ${user.email}`);
+            console.log(`Comparación de contraseña fallida para: ${email}`);
             return res.status(401).json({
                 success: false,
                 message: 'Credenciales inválidas'
             });
         }
 
-        // 4. Generación de token con información esencial
-        const tokenPayload = {
-            id: user._id,
-            name: user.name,
-            email: user.email,
-            role: user.role
-        };
-
-        const token = jwt.sign(tokenPayload, config.secret, {
-            expiresIn: config.jwtExpiration
-        });
-
-        // 5. Respuesta exitosa (formato consistente con otros módulos)
-        console.log(`Autenticación exitosa para ${user.email} (${user.role})`);
-        return res.status(200).json({
-            success: true,
-            message: 'Autenticación exitosa',
-            data: {
+        // 5. Generar token
+        const token = jwt.sign(
+            {
                 id: user._id,
-                name: user.name,
                 email: user.email,
-                role: user.role,
-                accessToken: token
+                role: user.role
+            },
+            config.secret,
+            { expiresIn: '24h' }
+        );
+
+        return res.json({
+            success: true,
+            token,
+            user: {
+                id: user._id,
+                email: user.email,
+                role: user.role
             }
         });
 
     } catch (error) {
-        console.error('Error en proceso de autenticación:', error);
+        console.error('Error en authController.signin:', error);
         return res.status(500).json({
             success: false,
-            message: 'Error en el servidor',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            message: 'Error en el servidor'
         });
     }
 };
