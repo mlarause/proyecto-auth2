@@ -218,6 +218,75 @@ exports.getAllUsers = async (req, res) => {
     }
 };
 
+exports.findOne = async (req, res) => {
+    console.log('[USER CONTROLLER] Iniciando findOne');
+    console.log('[DEBUG] Parámetros recibidos:', {
+        id: req.params.id,
+        userId: req.userId,
+        userRoles: req.roles // Asumiendo que el middleware inyecta esto
+    });
+
+    try {
+        const id = req.params.id;
+
+        // Validación mínima del ID (como en otros controladores)
+        if (!id) {
+            console.log('[ERROR] ID no proporcionado');
+            return res.status(400).send({ message: "ID de usuario requerido" });
+        }
+
+        // Consulta directa sin relaciones primero (más estable)
+        console.log('[DEBUG] Buscando usuario básico...');
+        const user = await User.findByPk(id, {
+            attributes: { exclude: ['password'] },
+            raw: true
+        });
+
+        if (!user) {
+            console.log('[ERROR] Usuario no encontrado');
+            return res.status(404).send({ message: "Usuario no encontrado" });
+        }
+
+        // Consulta de roles por separado (más robusto)
+        console.log('[DEBUG] Buscando roles del usuario...');
+        const roles = await db.sequelize.query(
+            `SELECT r.name FROM roles r 
+             JOIN user_roles ur ON r.id = ur.roleId 
+             WHERE ur.userId = :userId`,
+            {
+                replacements: { userId: id },
+                type: db.sequelize.QueryTypes.SELECT
+            }
+        );
+
+        console.log('[DEBUG] Datos completos obtenidos:', { user, roles });
+
+        // Formatear respuesta igual que en otros endpoints
+        const response = {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            roles: roles.map(r => r.name),
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt
+        };
+
+        res.send(response);
+
+    } catch (error) {
+        console.error('[ERROR] Detalles completos:', {
+            message: error.message,
+            stack: error.stack,
+            params: req.params,
+            userId: req.userId
+        });
+        res.status(500).send({
+            message: "Error al recuperar usuario",
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
 /*exports.getUserById = async (req, res) => {
     console.log('\n=== DIAGNÓSTICO AVANZADO - GET USER BY ID ===');
     
@@ -356,73 +425,4 @@ exports.verifyToken = async (req, res) => {
     }
 };
 
-exports.findOne = async (req, res) => {
-    console.log('[USER CONTROLLER] Iniciando findOne');
-    console.log('[DEBUG] Parámetros recibidos:', {
-        params: req.params,
-        userId: req.userId,
-        roles: req.roles
-    });
 
-    try {
-        const id = req.params.id;
-        
-        // 1. Validación básica del ID (igual que en otros controladores)
-        if (!id) {
-            console.log('[ERROR] ID no proporcionado');
-            return res.status(400).send({ message: "ID de usuario requerido" });
-        }
-
-        // 2. Control de permisos (misma lógica que findAll)
-        const isAdmin = req.roles.includes('admin');
-        const isCoordinator = req.roles.includes('coordinator');
-        
-        if (!isAdmin && !isCoordinator && req.userId !== id) {
-            console.log('[AUTH] Acceso denegado - Permisos insuficientes');
-            return res.status(403).send({ message: "No autorizado" });
-        }
-
-        // 3. Consulta a la base de datos (mismo patrón que en otros controladores)
-        console.log('[DEBUG] Ejecutando consulta para usuario ID:', id);
-        const user = await User.findOne({
-            where: { id: id },
-            include: [{
-                model: Role,
-                attributes: ['id', 'name'],
-                through: { attributes: [] }
-            }],
-            attributes: { exclude: ['password'] }
-        });
-
-        if (!user) {
-            console.log('[ERROR] Usuario no encontrado');
-            return res.status(404).send({ message: "Usuario no encontrado" });
-        }
-
-        console.log('[DEBUG] Usuario encontrado:', {
-            id: user.id,
-            username: user.username,
-            roles: user.Roles.map(role => role.name)
-        });
-
-        // 4. Responder con el mismo formato que findAll
-        res.send({
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            roles: user.Roles.map(role => role.name),
-            createdAt: user.createdAt,
-            updatedAt: user.updatedAt
-        });
-
-    } catch (error) {
-        console.error('[ERROR] En findOne:', {
-            message: error.message,
-            stack: error.stack
-        });
-        res.status(500).send({
-            message: "Error al recuperar usuario",
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-    }
-};
