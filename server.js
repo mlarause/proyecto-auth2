@@ -4,7 +4,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const morgan = require('morgan');
 const config = require('./config');
-
+const { MongoClient, ObjectId } = require('mongodb');
 // Importar rutas
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
@@ -12,7 +12,12 @@ const categoryRoutes = require('./routes/categoryRoutes');
 const subcategoryRoutes = require('./routes/subcategoryRoutes');
 const productRoutes = require('./routes/productRoutes');
 
-
+const mongoClient = new MongoClient(process.env.MONGODB_URI);
+(async () => {
+    await mongoClient.connect();
+    app.set('mongoDb', mongoClient.db());
+    console.log('Conexión directa a MongoDB establecida');
+})();
 const app = express();
 
 // Middlewares

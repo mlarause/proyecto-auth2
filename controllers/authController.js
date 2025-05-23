@@ -161,36 +161,104 @@ exports.getAllUsers = async (req, res) => {
 
 // 4. Obtener usuario por ID (Admin y Coordinador)
 exports.getUserById = async (req, res) => {
-  try {
-    // Verificar permisos
-    if (!checkPermission(req.userRole, [ROLES.ADMIN, ROLES.COORDINADOR])) {
-      return res.status(403).json({
-        success: false,
-        message: 'No tienes permisos para ver usuarios'
-      });
-    }
-
-    const user = await User.findById(req.params.id).select('-password -__v');
+    console.log('\n=== INICIO CONSULTA POR ID - SOLUCIÓN DEFINITIVA ===');
     
-    if (!user) {
-      return res.status(404).json({ 
-        success: false,
-        message: "Usuario no encontrado" 
-      });
+    try {
+        // 1. Validación extrema del ID
+        const id = req.params.id;
+        console.log('[1] ID recibido:', id);
+        
+        if (!id || typeof id !== 'string' || id.length !== 24) {
+            console.log('[ERROR] ID inválido');
+            return res.status(400).json({ 
+                success: false,
+                message: "ID de usuario no válido" 
+            });
+        }
+
+        // 2. Control de acceso (como en otros endpoints)
+        console.log('[2] Verificando permisos...');
+        const isAllowed = req.roles.includes('admin') || 
+                        req.roles.includes('coordinator') || 
+                        req.userId === id;
+        
+        if (!isAllowed) {
+            console.log('[PERMISO DENEGADO]');
+            return res.status(403).json({
+                success: false,
+                message: "No autorizado"
+            });
+        }
+
+        // 3. Consulta directa a MongoDB (sin relaciones)
+        console.log('[3] Ejecutando consulta directa...');
+        const db = req.app.get('mongoDb'); // Conexión directa a MongoDB
+        
+        // 3.1 Buscar usuario
+        const user = await db.collection('users').findOne(
+            { _id: new ObjectId(id) },
+            { projection: { _id: 1, username: 1, email: 1, createdAt: 1, updatedAt: 1 } }
+        );
+        
+        console.log('[4] Usuario encontrado:', user);
+        if (!user) {
+            console.log('[ERROR] Usuario no existe');
+            return res.status(404).json({
+                success: false,
+                message: "Usuario no encontrado"
+            });
+        }
+
+        // 3.2 Buscar roles en dos pasos explícitos
+        console.log('[5] Buscando roles...');
+        const userRoles = await db.collection('user_roles').find(
+            { userId: new ObjectId(id) }
+        ).toArray();
+        
+        const roleIds = userRoles.map(ur => ur.roleId);
+        const roles = await db.collection('roles').find(
+            { _id: { $in: roleIds } }
+        ).toArray();
+
+        console.log('[6] Roles encontrados:', roles.map(r => r.name));
+
+        // 4. Formatear respuesta (igual que otros endpoints)
+        const response = {
+            success: true,
+            data: {
+                id: user._id,
+                username: user.username,
+                email: user.email,
+                roles: roles.map(r => r.name),
+                createdAt: user.createdAt,
+                updatedAt: user.updatedAt
+            }
+        };
+
+        console.log('[7] CONSULTA EXITOSA');
+        return res.json(response);
+
+    } catch (error) {
+        console.error('[ERROR CRÍTICO]', {
+            message: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString(),
+            details: {
+                errorCode: error.code || 'N/A',
+                errorType: error.name
+            }
+        });
+        
+        return res.status(500).json({
+            success: false,
+            message: "Error al obtener usuario",
+            error: process.env.NODE_ENV === 'development' ? {
+                type: error.name,
+                message: error.message,
+                code: error.code
+            } : undefined
+        });
     }
-
-    res.status(200).json({
-      success: true,
-      data: user
-    });
-
-  } catch (error) {
-    console.error('Error en getUserById:', error);
-    res.status(500).json({ 
-      success: false,
-      message: "Error al obtener usuario"
-    });
-  }
 };
 
 // 5. Actualizar usuario (Admin puede actualizar todos, Coordinador solo auxiliares, Auxiliar solo sí mismo)
