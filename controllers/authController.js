@@ -79,64 +79,41 @@ exports.signup = async (req, res) => {
  */
 exports.signin = async (req, res) => {
     try {
-        console.log('\n=== INICIO DE SESIÓN ===');
-        console.log('Datos recibidos:', { email: req.body.email, password: req.body.password ? '***' : null });
+        const { email, password } = req.body;
 
-        // 1. Validación básica sin modificar estructura
-        if (!req.body.email || !req.body.password) {
-            console.log('Campos incompletos');
+        // Validación básica
+        if (!email || !password) {
             return res.status(400).json({
                 success: false,
                 message: 'Email y contraseña son requeridos'
             });
         }
 
-        // 2. Búsqueda segura del usuario
-        const user = await User.findOne({ 
-            email: req.body.email 
-        }).select('+password +status');
-        
-        console.log('Usuario encontrado:', user ? {
-            _id: user._id,
-            email: user.email,
-            status: user.status,
-            passwordHash: user.password ? '***' : null
-        } : 'No encontrado');
-
+        // Buscar usuario
+        const user = await User.findOne({ email: email.trim() }).select('+password');
         if (!user || user.status !== true) {
-            console.log('Usuario no existe o está inactivo');
             return res.status(401).json({
                 success: false,
                 message: 'Credenciales inválidas'
             });
         }
 
-        // 3. Comparación de contraseñas con debug
-        console.log('Comparando contraseñas...');
-        const isMatch = await bcrypt.compare(req.body.password, user.password);
-        console.log('Resultado comparación:', isMatch);
-
+        // Comparación segura de contraseñas
+        const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
-            console.log('Contraseña no coincide');
-            // DEBUG: Generar hash temporal para diagnóstico
-            const tempHash = await bcrypt.hash(req.body.password, 8);
-            console.log('Hash generado con misma contraseña:', tempHash);
-            console.log('Hash almacenado en DB:', user.password);
-            
             return res.status(401).json({
                 success: false,
                 message: 'Credenciales inválidas'
             });
         }
 
-        // 4. Generación de token (sin cambios)
+        // Generar token
         const token = jwt.sign(
             { id: user._id, email: user.email, role: user.role },
             config.secret,
             { expiresIn: '24h' }
         );
 
-        console.log('Autenticación exitosa');
         return res.json({
             success: true,
             token,
@@ -148,7 +125,7 @@ exports.signin = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error en authController:', error);
+        console.error('Error en signin:', error);
         return res.status(500).json({
             success: false,
             message: 'Error en el servidor'
