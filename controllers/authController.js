@@ -79,62 +79,62 @@ exports.signup = async (req, res) => {
  */
 exports.signin = async (req, res) => {
     try {
-        // 1. Validación de campos requeridos
+        // 1. Validación de entrada mejorada
         const { email, password } = req.body;
         
-        if (!email || !password) {
-            console.log('Intento de login sin credenciales completas');
+        if (!email?.trim() || !password?.trim()) {
+            console.log('Intento de login con credenciales vacías');
             return res.status(400).json({
                 success: false,
                 message: 'Email y contraseña son requeridos',
                 fields: {
-                    email: !email ? 'Email es requerido' : null,
-                    password: !password ? 'Contraseña es requerida' : null
+                    email: !email?.trim() ? 'Email es requerido' : null,
+                    password: !password?.trim() ? 'Contraseña es requerida' : null
                 }
             });
         }
 
-        // 2. Buscar usuario activo (case-insensitive)
+        // 2. Búsqueda robusta de usuario (case-insensitive y con trim)
         const user = await User.findOne({ 
-            email: { $regex: new RegExp('^' + email.toLowerCase().trim() + '$', 'i') },
+            email: { $regex: new RegExp(`^${email.trim()}$`, 'i') },
             status: true 
-        });
+        }).select('+password'); // Asegurar que traiga el campo password
 
         if (!user) {
-            console.log(`Usuario no encontrado: ${email}`);
+            console.log(`Usuario no encontrado o inactivo: ${email.trim()}`);
             return res.status(401).json({
                 success: false,
                 message: 'Credenciales inválidas'
             });
         }
 
-        // 3. Validar contraseña (con comparación segura)
-        const isPasswordValid = await bcrypt.compare(password, user.password);
-        if (!isPasswordValid) {
-            console.log(`Intento de login con contraseña incorrecta para: ${email}`);
+        // 3. Comparación segura de contraseñas con bcrypt
+        const isMatch = await bcrypt.compare(password.trim(), user.password);
+        if (!isMatch) {
+            console.log(`Contraseña incorrecta para usuario: ${user.email}`);
             return res.status(401).json({
                 success: false,
                 message: 'Credenciales inválidas'
             });
         }
 
-        // 4. Generar token JWT (formato consistente)
-        const token = jwt.sign(
-            {
-                id: user._id,
-                name: user.name,
-                email: user.email,
-                role: user.role
-            },
-            config.secret,
-            { expiresIn: config.jwtExpiration }
-        );
+        // 4. Generación de token con información esencial
+        const tokenPayload = {
+            id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role
+        };
 
-        // 5. Respuesta exitosa (formato igual a otros módulos)
-        console.log(`Login exitoso para: ${user.email} (${user.role})`);
+        const token = jwt.sign(tokenPayload, config.secret, {
+            expiresIn: config.jwtExpiration
+        });
+
+        // 5. Respuesta exitosa (formato consistente con otros módulos)
+        console.log(`Autenticación exitosa para ${user.email} (${user.role})`);
         return res.status(200).json({
             success: true,
-            message: 'Inicio de sesión exitoso',
+            message: 'Autenticación exitosa',
             data: {
                 id: user._id,
                 name: user.name,
@@ -145,11 +145,11 @@ exports.signin = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error en authController.signin:', error);
+        console.error('Error en proceso de autenticación:', error);
         return res.status(500).json({
             success: false,
-            message: 'Error al iniciar sesión',
-            error: process.env.NODE_ENV === 'development' ? error.message : null
+            message: 'Error en el servidor',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
 };
