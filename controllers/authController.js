@@ -219,51 +219,74 @@ exports.getAllUsers = async (req, res) => {
 };
 
 exports.getUserById = async (req, res) => {
-    console.log('\n=== DIAGNÓSTICO GET USER BY ID ===');
+    console.log('\n=== DIAGNÓSTICO AVANZADO - GET USER BY ID ===');
     
     try {
-        // 1. Verificar autenticación
-        console.log('[1] Datos de autenticación:', {
+        // 1. Verificar datos de autenticación
+        console.log('[1] Datos del usuario autenticado:', {
             userId: req.userId,
             userRole: req.userRole,
             tokenValido: !!req.userId && !!req.userRole
         });
 
-        // 2. Validar ID
-        console.log('[2] ID recibido:', req.params.id);
+        if (!req.userId || !req.userRole) {
+            console.error('[2] Error: Datos de autenticación incompletos');
+            return res.status(401).json({
+                success: false,
+                message: 'Autenticación inválida'
+            });
+        }
+
+        // 2. Validar formato del ID
+        console.log('[3] ID recibido:', req.params.id);
         if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-            console.log('[3] Error: ID no válido');
+            console.error('[4] Error: Formato de ID inválido');
             return res.status(400).json({
                 success: false,
                 message: 'ID de usuario no válido'
             });
         }
 
-        // 3. Consulta a MongoDB con diagnóstico
-        console.log('[4] Ejecutando consulta...');
-        const user = await User.findById(req.params.id)
+        // 3. Convertir ID a ObjectId
+        const userId = new mongoose.Types.ObjectId(req.params.id);
+        console.log('[5] ID convertido a ObjectId:', userId);
+
+        // 4. Consulta con diagnóstico completo
+        console.log('[6] Ejecutando consulta MongoDB...');
+        const user = await User.findById(userId)
             .select('-password -__v')
-            .lean();
-        
-        console.log('[5] Resultado consulta:', user ? 'Usuario encontrado' : 'Usuario no encontrado');
+            .lean()
+            .catch(err => {
+                console.error('[6a] Error en consulta MongoDB:', err);
+                throw err;
+            });
+
+        console.log('[7] Resultado de consulta:', user ? 'Éxito' : 'Usuario no encontrado');
 
         if (!user) {
-            console.log('[6] Error: Usuario no existe');
+            console.error('[8] Error: Usuario no existe en BD');
             return res.status(404).json({
                 success: false,
                 message: 'Usuario no encontrado'
             });
         }
 
-        // 4. Verificar visibilidad según rol
-        console.log('[7] Control de acceso:', {
+        // 5. Verificar permisos
+        console.log('[9] Control de acceso:', {
             rolSolicitante: req.userRole,
             rolUsuarioConsultado: user.role
         });
 
-        // 5. Responder con datos seguros
-        console.log('[8] Preparando respuesta...');
-        const safeUserData = {
+        if (!['admin', 'coordinator'].includes(req.userRole)) {
+            console.error('[10] Error: Permisos insuficientes');
+            return res.status(403).json({
+                success: false,
+                message: 'No autorizado'
+            });
+        }
+
+        // 6. Preparar respuesta
+        const responseData = {
             _id: user._id,
             name: user.name,
             email: user.email,
@@ -271,9 +294,10 @@ exports.getUserById = async (req, res) => {
             status: user.status
         };
 
+        console.log('[11] Respuesta preparada:', responseData);
         return res.status(200).json({
             success: true,
-            data: safeUserData
+            data: responseData
         });
 
     } catch (error) {
@@ -282,13 +306,17 @@ exports.getUserById = async (req, res) => {
             message: error.message,
             stack: error.stack,
             params: req.params,
-            user: req.user
+            user: req.user,
+            timestamp: new Date()
         });
         
         return res.status(500).json({
             success: false,
             message: 'Error en el servidor',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            error: process.env.NODE_ENV === 'development' ? {
+                name: error.name,
+                message: error.message
+            } : undefined
         });
     }
 };
