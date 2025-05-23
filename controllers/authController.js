@@ -217,6 +217,81 @@ exports.getAllUsers = async (req, res) => {
         });
     }
 };
+
+exports.getUserById = async (req, res) => {
+    console.log('\n=== DIAGNÓSTICO GET USER BY ID ===');
+    
+    try {
+        // 1. Verificar autenticación
+        console.log('[1] Datos de autenticación:', {
+            userId: req.userId,
+            userRole: req.userRole,
+            tokenValido: !!req.userId && !!req.userRole
+        });
+
+        // 2. Validar ID
+        console.log('[2] ID recibido:', req.params.id);
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            console.log('[3] Error: ID no válido');
+            return res.status(400).json({
+                success: false,
+                message: 'ID de usuario no válido'
+            });
+        }
+
+        // 3. Consulta a MongoDB con diagnóstico
+        console.log('[4] Ejecutando consulta...');
+        const user = await User.findById(req.params.id)
+            .select('-password -__v')
+            .lean();
+        
+        console.log('[5] Resultado consulta:', user ? 'Usuario encontrado' : 'Usuario no encontrado');
+
+        if (!user) {
+            console.log('[6] Error: Usuario no existe');
+            return res.status(404).json({
+                success: false,
+                message: 'Usuario no encontrado'
+            });
+        }
+
+        // 4. Verificar visibilidad según rol
+        console.log('[7] Control de acceso:', {
+            rolSolicitante: req.userRole,
+            rolUsuarioConsultado: user.role
+        });
+
+        // 5. Responder con datos seguros
+        console.log('[8] Preparando respuesta...');
+        const safeUserData = {
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            status: user.status
+        };
+
+        return res.status(200).json({
+            success: true,
+            data: safeUserData
+        });
+
+    } catch (error) {
+        console.error('[ERROR] Detalles completos:', {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+            params: req.params,
+            user: req.user
+        });
+        
+        return res.status(500).json({
+            success: false,
+            message: 'Error en el servidor',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
 /**
  * @desc    Verificar token
  * @route   GET /api/auth/verify

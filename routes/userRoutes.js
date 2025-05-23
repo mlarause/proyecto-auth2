@@ -43,5 +43,10 @@ router.get('/',
 router.post('/', verifyToken, checkRole('admin'), userController.createUser);
 router.put('/:id', verifyToken, checkRole('admin', 'coordinator'), userController.updateUser);
 router.delete('/:id', verifyToken, checkRole('admin'), userController.deleteUser);
+router.get('/:id', 
+    verifyToken,
+    checkRole('admin', 'coordinator'),
+    userController.getUserById
+);
 
 module.exports = router;
