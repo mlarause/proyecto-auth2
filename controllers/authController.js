@@ -180,6 +180,62 @@ exports.signin = async (req, res) => {
         });
     }
 };
+
+
+exports.getAllUsers = async (req, res) => {
+    console.log('\n=== INICIO CONSULTA USUARIOS ===');
+    
+    try {
+        // 1. Verificar headers de la petición
+        console.log('\n[1] Headers recibidos:', {
+            headers: req.headers,
+            method: req.method,
+            originalUrl: req.originalUrl
+        });
+
+        // 2. Verificar presencia del token
+        const token = req.headers['x-access-token'] || req.headers.authorization;
+        console.log('\n[2] Token encontrado:', token ? '***' + token.slice(-10) : 'NO PROVISTO');
+
+        if (!token) {
+            console.log('\n[3] Error: Token no proporcionado');
+            return res.status(403).json({
+                success: false,
+                message: 'No se proporcionó token de autenticación'
+            });
+        }
+
+        // 3. Verificar autenticación (simulado para diagnóstico)
+        console.log('\n[4] Verificando autenticación...');
+        console.log('Usuario autenticado (simulado):', {
+            userId: req.userId,
+            userRole: req.userRole
+        });
+
+        // 4. Consulta a la base de datos
+        console.log('\n[5] Realizando consulta a MongoDB...');
+        const users = await User.find({}).select('-password');
+        console.log('\n[6] Usuarios encontrados:', users.length);
+
+        // 5. Respuesta exitosa
+        console.log('\n[7] Enviando respuesta...');
+        return res.status(200).json({
+            success: true,
+            count: users.length,
+            users
+        });
+
+    } catch (error) {
+        console.log('\n[ERROR] Detalles del fallo:', {
+            message: error.message,
+            stack: error.stack
+        });
+        return res.status(500).json({
+            success: false,
+            message: 'Error al consultar usuarios'
+        });
+    }
+};
 /**
  * @desc    Verificar token
  * @route   GET /api/auth/verify
