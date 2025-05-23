@@ -19,7 +19,7 @@ router.use((req, res, next) => {
 // GET /api/users - Listar usuarios (admin y coordinador pueden ver todos, auxiliar solo se ve a sí mismo)
 router.get('/',
     verifyToken,
-    checkRole('admin', 'coordinator', 'auxiliary'),
+    checkRole('admin', 'coordinator', 'auxiliar'),
     userController.getAllUsers
 );
 
@@ -33,7 +33,7 @@ router.post('/',
 // GET /api/users/:id - Obtener usuario específico (admin y coordinador pueden ver cualquiera, auxiliar solo se ve a sí mismo)
 router.get('/:id',
     verifyToken,
-    checkRole('admin', 'coordinator', 'auxiliary'),
+    checkRole('admin', 'coordinator', 'auxiliar'),
     userController.getUserById
 );
 

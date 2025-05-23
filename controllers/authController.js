@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const config = require('../config/auth.config');
 
+
 exports.signup = async (req, res) => {
     try {
         // 1. Extraer campos del body (compatible con 'username' o 'name')
@@ -45,7 +46,7 @@ exports.signup = async (req, res) => {
             name: userName.trim(), // Usa el nombre encontrado (username o name)
             email: email.toLowerCase().trim(),
             password: bcrypt.hashSync(password, 8),
-            role: role || 'auxiliary'
+            role: role || 'auxiliar'
         });
 
         await newUser.save();
@@ -219,85 +220,98 @@ exports.getAllUsers = async (req, res) => {
 };
 
 exports.getUserById = async (req, res) => {
-    console.log('\n=== INICIO DIAGNÓSTICO DETALLADO ===');
-    console.log('[1/8] Parámetros recibidos:', {
-        params: req.params,
-        userId: req.userId,
-        userRoles: req.roles, // Cambiado de req.userRole a req.roles
-        headers: {
-            authorization: req.headers.authorization ? '***' + req.headers.authorization.slice(-8) : null
-        }
+    console.log('\n=== INICIO DIAGNÓSTICO - CONSULTA POR ID ===');
+    console.log('[1/6] Parámetros recibidos:', {
+        idSolicitado: req.params.id,
+        usuarioSolicitante: req.userId,
+        rolesUsuario: req.roles // Asegurando compatibilidad con authJwt.js
     });
 
     try {
-        const requestedId = req.params.id;
-        console.log('[2/8] ID solicitado:', requestedId);
-
+        const userId = req.params.id;
+        
         // Validación básica del ID
-        if (!requestedId) {
+        if (!userId) {
             console.log('[ERROR] ID no proporcionado');
-            return res.status(400).send({ message: "ID de usuario requerido" });
+            return res.status(400).json({ 
+                success: false,
+                message: "ID de usuario es requerido"
+            });
         }
 
-        // Verificación de permisos (adaptado al sistema de roles existente)
-        console.log('[3/8] Verificando permisos...');
-        const isAdmin = req.roles.includes('admin');
-        const isCoordinator = req.roles.includes('coordinator');
-        const isSelf = req.userId === requestedId;
-
-        if (!isAdmin && !isCoordinator && !isSelf) {
-            console.log('[PERMISO] Acceso denegado. Roles del usuario:', req.roles);
-            return res.status(403).send({ message: "No autorizado" });
+        // Control de acceso mejorado
+        console.log('[2/6] Verificando permisos...');
+        const tienePermiso = req.roles.includes('admin') || 
+                           req.roles.includes('coordinator') || 
+                           req.userId === userId;
+        
+        if (!tienePermiso) {
+            console.log('[PERMISO] Acceso denegado. Roles:', req.roles);
+            return res.status(403).json({
+                success: false,
+                message: "No autorizado para ver este usuario"
+            });
         }
 
-        // Consulta optimizada con manejo seguro de relaciones
-        console.log('[4/8] Buscando usuario con roles...');
-        const user = await User.findOne({
-            where: { id: requestedId },
+        // Consulta optimizada y segura
+        console.log('[3/6] Ejecutando consulta a la base de datos...');
+        const usuario = await User.findOne({
+            where: { id: userId },
             include: [{
                 model: Role,
                 attributes: ['name'],
-                through: { attributes: [] }
+                through: { attributes: [] },
+                required: false // Para evitar INNER JOIN
             }],
             attributes: { exclude: ['password'] }
         });
 
-        console.log('[5/8] Resultado de la consulta:', user ? 'Usuario encontrado' : 'Usuario no encontrado');
-
-        if (!user) {
-            console.log('[ERROR] Usuario no existe en BD');
-            return res.status(404).send({ message: "Usuario no encontrado" });
+        // Verificación de resultados
+        if (!usuario) {
+            console.log('[ERROR] Usuario no encontrado en BD');
+            return res.status(404).json({
+                success: false,
+                message: "Usuario no encontrado"
+            });
         }
 
-        // Extraer roles de forma segura
-        console.log('[6/8] Procesando roles...');
-        const userRoles = user.Roles ? user.Roles.map(role => role.name) : [];
-        console.log('[7/8] Roles del usuario:', userRoles);
+        console.log('[4/6] Datos básicos del usuario:', {
+            id: usuario.id,
+            email: usuario.email
+        });
 
-        // Formatear respuesta
-        const response = {
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            roles: userRoles,
-            createdAt: user.createdAt,
-            updatedAt: user.updatedAt
+        // Procesamiento seguro de roles
+        console.log('[5/6] Procesando roles...');
+        const rolesUsuario = usuario.Roles ? 
+                           usuario.Roles.map(rol => rol.name) : 
+                           [];
+
+        console.log('Roles encontrados:', rolesUsuario);
+
+        // Respuesta estandarizada
+        const respuesta = {
+            success: true,
+            data: {
+                id: usuario.id,
+                username: usuario.username,
+                email: usuario.email,
+                roles: rolesUsuario,
+                createdAt: usuario.createdAt,
+                updatedAt: usuario.createdAt
+            }
         };
 
-        console.log('[8/8] Respuesta final:', response);
-        console.log('=== DIAGNÓSTICO COMPLETADO CON ÉXITO ===');
-        res.send(response);
+        console.log('[6/6] === CONSULTA EXITOSA ===');
+        return res.json(respuesta);
 
     } catch (error) {
-        console.error('=== ERROR CRÍTICO ===', {
-            message: error.message,
+        console.error('=== ERROR EN CONSULTA ===', {
+            mensaje: error.message,
             stack: error.stack,
-            params: req.params,
-            userId: req.userId,
-            userRoles: req.roles,
             timestamp: new Date().toISOString()
         });
-        res.status(500).send({
+        
+        return res.status(500).json({
             success: false,
             message: "Error al obtener usuario",
             error: process.env.NODE_ENV === 'development' ? error.message : undefined
