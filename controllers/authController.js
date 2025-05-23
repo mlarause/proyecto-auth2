@@ -221,82 +221,97 @@ exports.getAllUsers = async (req, res) => {
 
 exports.getUserById = async (req, res) => {
     console.log('\n=== INICIO CONSULTA USUARIO POR ID ===');
-    console.log('[USER] ID solicitado:', req.params.id);
-    console.log('[USER] Usuario solicitante:', req.userId);
-    console.log('[USER] Roles del solicitante:', req.roles);
+    console.log('[1/5] Parámetros recibidos:', {
+        id: req.params.id,
+        userId: req.userId,
+        roles: req.roles
+    });
 
     try {
         const id = req.params.id;
 
-        // Validación igual que en categoryController
+        // 1. Validación ID (igual que en categoryController)
         if (!id) {
             console.log('[ERROR] ID no proporcionado');
-            return res.status(400).send({ 
+            return res.status(400).json({ 
                 success: false,
                 message: "Se requiere ID de usuario" 
             });
         }
 
-        // Verificación de permisos como en categories
-        const isAdmin = req.roles.includes('admin');
-        const isCoordinator = req.roles.includes('coordinator');
+        // 2. Control de acceso (adaptado a usuarios)
+        console.log('[2/5] Verificando permisos...');
+        const canAccess = req.roles.includes('admin') || 
+                        req.roles.includes('coordinator') || 
+                        req.userId === id;
         
-        if (!isAdmin && !isCoordinator && req.userId !== id) {
-            console.log('[PERMISO] Acceso denegado');
-            return res.status(403).send({ 
+        if (!canAccess) {
+            console.log('[PERMISO] Denegado. Roles:', req.roles);
+            return res.status(403).json({
                 success: false,
-                message: "No autorizado para ver este usuario" 
+                message: "No autorizado"
             });
         }
 
-        // Consulta directa similar a categoryController
-        console.log('[DB] Ejecutando consulta...');
-        const user = await db.sequelize.query(
-            `SELECT u.id, u.username, u.email, u.createdAt, u.updatedAt,
-             GROUP_CONCAT(r.name) as roles
+        // 3. Consulta directa (mismo enfoque que categoryController)
+        console.log('[3/5] Ejecutando consulta SQL...');
+        const result = await db.sequelize.query(
+            `SELECT 
+                u.id, 
+                u.username, 
+                u.email,
+                u.createdAt,
+                u.updatedAt,
+                (
+                    SELECT GROUP_CONCAT(r.name) 
+                    FROM user_roles ur 
+                    JOIN roles r ON ur.roleId = r.id 
+                    WHERE ur.userId = u.id
+                ) as roles
              FROM users u
-             LEFT JOIN user_roles ur ON u.id = ur.userId
-             LEFT JOIN roles r ON ur.roleId = r.id
-             WHERE u.id = :userId
-             GROUP BY u.id`,
+             WHERE u.id = :id
+             LIMIT 1`,
             {
-                replacements: { userId: id },
+                replacements: { id },
                 type: db.sequelize.QueryTypes.SELECT
             }
         );
 
-        if (!user || user.length === 0) {
-            console.log('[ERROR] Usuario no encontrado');
-            return res.status(404).send({ 
+        // 4. Procesar resultados (como en categoryController)
+        console.log('[4/5] Resultados:', result);
+        if (!result || result.length === 0) {
+            console.log('[ERROR] No encontrado');
+            return res.status(404).json({
                 success: false,
-                message: "Usuario no encontrado" 
+                message: "Usuario no encontrado"
             });
         }
 
-        // Formatear respuesta igual que en categories
+        const userData = result[0];
         const response = {
             success: true,
             data: {
-                id: user[0].id,
-                username: user[0].username,
-                email: user[0].email,
-                roles: user[0].roles ? user[0].roles.split(',') : [],
-                createdAt: user[0].createdAt,
-                updatedAt: user[0].updatedAt
+                id: userData.id,
+                username: userData.username,
+                email: userData.email,
+                roles: userData.roles ? userData.roles.split(',') : [],
+                createdAt: userData.createdAt,
+                updatedAt: userData.updatedAt
             }
         };
 
-        console.log('[EXITO] Usuario encontrado:', response);
-        res.send(response);
+        console.log('[5/5] Respuesta exitosa');
+        return res.json(response);
 
     } catch (error) {
-        console.error('[ERROR]', {
+        console.error('[ERROR CRÍTICO]', {
             message: error.message,
-            stack: error.stack
+            stack: error.stack,
+            timestamp: new Date().toISOString()
         });
-        res.status(500).send({
+        return res.status(500).json({
             success: false,
-            message: "Error al recuperar usuario",
+            message: "Error al obtener usuario",
             error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
