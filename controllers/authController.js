@@ -49,12 +49,21 @@ exports.signup = async (req, res) => {
 // 2. Login (común para todos)
 exports.signin = async (req, res) => {
   try {
-    console.log('[AuthController] Datos recibidos en signin:', {
-      username: req.body.username,
-      password: req.body.password ? '***' : 'NO PROVISTO' // Log seguro de contraseña
-    });
+    console.log('[AuthController] Body recibido:', req.body);
+    
+    // 1. Validación de campos requeridos
+    if (!req.body.username || !req.body.password) {
+      console.log('[AuthController] Campos faltantes:', {
+        username: req.body.username,
+        password: req.body.password ? '***' : 'NO PROVISTO'
+      });
+      return res.status(400).json({
+        success: false,
+        message: "Username y password son requeridos"
+      });
+    }
 
-    // 1. Buscar usuario
+    // 2. Buscar usuario
     const user = await User.findOne({ username: req.body.username });
     
     if (!user) {
@@ -65,26 +74,18 @@ exports.signin = async (req, res) => {
       });
     }
 
-    // 2. Verificar que la contraseña fue provista
-    if (!req.body.password) {
-      console.log('[AuthController] Contraseña no provista');
-      return res.status(400).json({
-        success: false,
-        message: "Contraseña requerida"
-      });
-    }
-
     // 3. Verificar contraseña
+    console.log('[AuthController] Comparando contraseñas...');
     const passwordIsValid = bcrypt.compareSync(
       req.body.password,
       user.password
     );
 
     if (!passwordIsValid) {
-      console.log('[AuthController] Contraseña incorrecta para usuario:', user.username);
+      console.log('[AuthController] Contraseña incorrecta');
       return res.status(401).json({
         success: false,
-        message: "Contraseña incorrecta"
+        message: "Credenciales inválidas"
       });
     }
 
@@ -93,10 +94,10 @@ exports.signin = async (req, res) => {
       expiresIn: config.jwtExpiration
     });
 
-    // 5. Responder con éxito
+    // 5. Responder
     res.status(200).json({
       success: true,
-      message: "Autenticación exitosa",
+      message: "Login exitoso",
       token: token,
       user: {
         id: user._id,
@@ -107,10 +108,10 @@ exports.signin = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[AuthController] Error en signin:', error);
+    console.error('[AuthController] Error crítico:', error);
     res.status(500).json({
       success: false,
-      message: "Error durante el login",
+      message: "Error en el servidor",
       error: error.message
     });
   }
