@@ -219,103 +219,37 @@ exports.getAllUsers = async (req, res) => {
     }
 };
 
+// userController.js - SOLO CAMBIAR ESTA FUNCIÓN
 exports.getUserById = async (req, res) => {
-    console.log('\n=== NUEVO ENFOQUE - CONSULTA POR ID ===');
-    
-    try {
-        const id = req.params.id;
-        console.log('[1] ID recibido:', id);
-
-        // Validación extrema del ID
-        if (!id || typeof id !== 'string' || id.length !== 24) {
-            console.log('[ERROR] ID inválido');
-            return res.status(400).json({ 
-                success: false,
-                message: "ID de usuario no válido" 
-            });
-        }
-
-        // Verificación de permisos
-        console.log('[2] Roles del usuario:', req.roles);
-        const canAccess = req.roles.includes('admin') || 
-                        req.roles.includes('coordinator') || 
-                        req.userId === id;
-        
-        if (!canAccess) {
-            console.log('[PERMISO DENEGADO]');
-            return res.status(403).json({
-                success: false,
-                message: "No autorizado"
-            });
-        }
-
-        // Consulta DIRECTA a MongoDB (sin Sequelize)
-        console.log('[3] Ejecutando consulta directa a MongoDB...');
-        const user = await db.sequelize.query(
-            `SELECT u._id as id, u.username, u.email, u.createdAt, u.updatedAt
-             FROM users u
-             WHERE u._id = ObjectId(:id)`,
-            {
-                replacements: { id },
-                type: db.sequelize.QueryTypes.SELECT
-            }
-        );
-
-        console.log('[4] Usuario encontrado:', user);
-        if (!user || user.length === 0) {
-            console.log('[ERROR] Usuario no existe');
-            return res.status(404).json({
-                success: false,
-                message: "Usuario no encontrado"
-            });
-        }
-
-        // Consulta DIRECTA de roles
-        console.log('[5] Buscando roles...');
-        const roles = await db.sequelize.query(
-            `SELECT r.name 
-             FROM roles r
-             WHERE r._id IN (
-               SELECT ur.roleId 
-               FROM user_roles ur 
-               WHERE ur.userId = ObjectId(:id)
-             )`,
-            {
-                replacements: { id },
-                type: db.sequelize.QueryTypes.SELECT
-            }
-        );
-
-        console.log('[6] Roles encontrados:', roles);
-
-        // Respuesta ultra simple
-        const response = {
-            success: true,
-            data: {
-                ...user[0],
-                roles: roles.map(r => r.name)
-            }
-        };
-
-        console.log('[7] ÉXITO - Respuesta enviada');
-        return res.json(response);
-
-    } catch (error) {
-        console.error('[ERROR FATAL]', {
-            message: error.message,
-            stack: error.stack,
-            timestamp: new Date().toISOString()
-        });
-        return res.status(500).json({
-            success: false,
-            message: "Error crítico al obtener usuario",
-            error: process.env.NODE_ENV === 'development' ? {
-                type: error.name,
-                message: error.message,
-                stack: error.stack
-            } : undefined
-        });
+  try {
+    // 1. Verifica si el ID existe y es válido (sin romper conexiones)
+    if (!req.params.id) {
+      return res.status(400).json({ message: "Se requiere ID de usuario" });
     }
+
+    // 2. Consulta segura (usa la misma conexión existente)
+    const user = await User.findOne(
+      { _id: req.params.id },
+      { password: 0, __v: 0 } // Excluye campos sensibles
+    ).lean();
+
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+
+    // 3. Devuelve en el mismo formato que tus otras funciones
+    res.status(200).json({
+      success: true,
+      data: user
+    });
+
+  } catch (error) {
+    console.error("Error en getUserById:", error.message); // Solo log del mensaje
+    res.status(500).json({ 
+      success: false,
+      message: "Error al buscar usuario"
+    });
+  }
 };
 /**
  * @desc    Verificar token
