@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
+const { verifySignUp } = require('../middlewares');
 
 // Importación con verificación
 let verifyToken;
@@ -29,17 +30,14 @@ router.use((req, res, next) => {
 // Ruta de login (sin protección)
 router.post('/signin', authController.signin);
 
-// Ruta de registro con verificación de middleware
+// Ruta de registro CORREGIDA (sin verifyToken, con middlewares de verificación de registro)
 router.post('/signup', 
     (req, res, next) => {
-        console.log('[AuthRoutes] Antes de verifyToken');
+        console.log('[AuthRoutes] Middleware de verificación de registro');
         next();
     },
-    verifyToken,
-    (req, res, next) => {
-        console.log('[AuthRoutes] Después de verifyToken');
-        next();
-    },
+    verifySignUp.checkDuplicateUsernameOrEmail,
+    verifySignUp.checkRolesExisted,
     authController.signup
 );
 
