@@ -37,6 +37,8 @@ router.get('/:id',
     userController.getUserById
 );
 
+
+
 // PUT /api/users/:id - Actualizar usuario (admin y coordinador pueden actualizar)
 router.put('/:id',
     verifyToken,

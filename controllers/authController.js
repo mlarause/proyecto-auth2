@@ -219,23 +219,103 @@ exports.getAllUsers = async (req, res) => {
     }
 };
 
-const getUserById = async (req, res) => {
-  try {
-    console.log("Buscando usuario con ID:", req.params.id); // Rastreo detallado
+exports.getUserById = async (req, res) => {
+    console.log('\n=== NUEVO ENFOQUE - CONSULTA POR ID ===');
     
-    const user = await User.findById(req.params.id).select('-password'); // Excluir contraseña
-    
-    if (!user) {
-      console.log("Usuario no encontrado para ID:", req.params.id);
-      return res.status(404).send({ message: "Usuario no encontrado." });
+    try {
+        const id = req.params.id;
+        console.log('[1] ID recibido:', id);
+
+        // Validación extrema del ID
+        if (!id || typeof id !== 'string' || id.length !== 24) {
+            console.log('[ERROR] ID inválido');
+            return res.status(400).json({ 
+                success: false,
+                message: "ID de usuario no válido" 
+            });
+        }
+
+        // Verificación de permisos
+        console.log('[2] Roles del usuario:', req.roles);
+        const canAccess = req.roles.includes('admin') || 
+                        req.roles.includes('coordinator') || 
+                        req.userId === id;
+        
+        if (!canAccess) {
+            console.log('[PERMISO DENEGADO]');
+            return res.status(403).json({
+                success: false,
+                message: "No autorizado"
+            });
+        }
+
+        // Consulta DIRECTA a MongoDB (sin Sequelize)
+        console.log('[3] Ejecutando consulta directa a MongoDB...');
+        const user = await db.sequelize.query(
+            `SELECT u._id as id, u.username, u.email, u.createdAt, u.updatedAt
+             FROM users u
+             WHERE u._id = ObjectId(:id)`,
+            {
+                replacements: { id },
+                type: db.sequelize.QueryTypes.SELECT
+            }
+        );
+
+        console.log('[4] Usuario encontrado:', user);
+        if (!user || user.length === 0) {
+            console.log('[ERROR] Usuario no existe');
+            return res.status(404).json({
+                success: false,
+                message: "Usuario no encontrado"
+            });
+        }
+
+        // Consulta DIRECTA de roles
+        console.log('[5] Buscando roles...');
+        const roles = await db.sequelize.query(
+            `SELECT r.name 
+             FROM roles r
+             WHERE r._id IN (
+               SELECT ur.roleId 
+               FROM user_roles ur 
+               WHERE ur.userId = ObjectId(:id)
+             )`,
+            {
+                replacements: { id },
+                type: db.sequelize.QueryTypes.SELECT
+            }
+        );
+
+        console.log('[6] Roles encontrados:', roles);
+
+        // Respuesta ultra simple
+        const response = {
+            success: true,
+            data: {
+                ...user[0],
+                roles: roles.map(r => r.name)
+            }
+        };
+
+        console.log('[7] ÉXITO - Respuesta enviada');
+        return res.json(response);
+
+    } catch (error) {
+        console.error('[ERROR FATAL]', {
+            message: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+        });
+        return res.status(500).json({
+            success: false,
+            message: "Error crítico al obtener usuario",
+            error: process.env.NODE_ENV === 'development' ? {
+                type: error.name,
+                message: error.message,
+                stack: error.stack
+            } : undefined
+        });
     }
-    
-    console.log("Usuario encontrado:", user);
-    res.status(200).send(user);
-  } catch (error) {
-    console.error("Error en getUserById:", error);
-    res.status(500).send({ message: "Error al obtener el usuario: " + error.message });
-  }
 };
 /**
  * @desc    Verificar token
