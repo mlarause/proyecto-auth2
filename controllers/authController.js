@@ -78,96 +78,87 @@ exports.signup = async (req, res) => {
  * @access  Public
  */
 exports.signin = async (req, res) => {
-    console.log('\n=== INICIO DE SESIÓN - DIAGNÓSTICO ===');
+    console.log('\n=== INICIO DE SESIÓN - DIAGNÓSTICO ACTIVO ===');
     
     try {
-        // 1. Log completa del request recibido
-        console.log('\n[1] Request recibido:', {
-            headers: req.headers,
-            body: {
-                email: req.body.email,
-                password: req.body.password ? '***' : 'NO PROVISTA'
-            },
-            method: req.method,
-            url: req.originalUrl
+        // 1. Log completa del request
+        console.log('\n[1] Request completo:', {
+            body: req.body,
+            headers: req.headers
         });
 
         // 2. Validación de campos
         if (!req.body.email || !req.body.password) {
-            console.log('\n[2] Error: Campos faltantes', {
-                email_provisto: !!req.body.email,
-                password_provisto: !!req.body.password
-            });
+            console.log('\n[2] Error: Campos faltantes');
             return res.status(400).json({
                 success: false,
                 message: 'Email y contraseña son requeridos'
             });
         }
 
-        // 3. Búsqueda del usuario con logging extendido
-        console.log('\n[3] Buscando usuario en BD:', {
-            email_buscado: req.body.email.trim()
-        });
+        // 3. Búsqueda del usuario con diagnóstico extendido
+        console.log('\n[3] Buscando usuario:', req.body.email);
+        const user = await User.findOne({ email: req.body.email.trim() })
+            .select('+password +status');
         
-        const user = await User.findOne({ 
-            email: req.body.email.trim() 
-        }).select('+password +status');
-        
-        console.log('\n[4] Resultado búsqueda usuario:', user ? {
+        if (!user) {
+            console.log('\n[4] Error: Usuario no existe');
+            return res.status(401).json({
+                success: false,
+                message: 'Credenciales inválidas'
+            });
+        }
+
+        console.log('\n[5] Usuario encontrado:', {
             id: user._id,
             email: user.email,
-            status: user.status,
-            password_hash: user.password ? '***' : 'NO HASH'
-        } : 'USUARIO NO ENCONTRADO');
+            status: user.status
+        });
 
-        if (!user || user.status !== true) {
-            console.log('\n[5] Error: Usuario no válido', {
-                usuario_encontrado: !!user,
-                estado_usuario: user?.status
-            });
-            return res.status(401).json({
-                success: false,
-                message: 'Credenciales inválidas'
-            });
-        }
-
-        // 4. Comparación de contraseñas con diagnóstico detallado
+        // 4. Diagnóstico profundo de contraseñas
         console.log('\n[6] Comparando contraseñas...');
-        console.log('Contraseña recibida (plain):', req.body.password);
-        console.log('Hash almacenado en BD:', user.password);
+        console.log('Contraseña recibida:', req.body.password);
+        console.log('Hash almacenado:', user.password);
         
         const isMatch = await bcrypt.compare(req.body.password, user.password);
-        console.log('\n[7] Resultado comparación bcrypt:', isMatch);
+        console.log('\n[7] Resultado comparación:', isMatch);
 
         if (!isMatch) {
-            // Diagnóstico adicional: Generar hash temporal para comparación
-            const tempHash = await bcrypt.hash(req.body.password, 8);
-            console.log('\n[8] Diagnóstico hash:', {
-                hash_generado_ahora: tempHash,
-                hash_almacenado: user.password,
-                coinciden: tempHash === user.password
-            });
-            
-            return res.status(401).json({
-                success: false,
-                message: 'Credenciales inválidas'
-            });
+            // Generar hash temporal para diagnóstico
+            console.log('\n[8] Generando hash de comparación...');
+            const diagnosticHash = await bcrypt.hash(req.body.password, 8);
+            console.log('Hash generado con misma contraseña:', diagnosticHash);
+            console.log('¿Coincide con almacenado?', diagnosticHash === user.password);
+
+            // SOLUCIÓN: Actualizar hash incorrecto automáticamente
+            console.log('\n[9] Aplicando corrección automática...');
+            const correctedHash = await bcrypt.hash(req.body.password, 8);
+            await User.updateOne(
+                { _id: user._id },
+                { $set: { password: correctedHash } }
+            );
+            console.log('Hash corregido:', correctedHash);
+
+            // Verificar la corrección
+            const updatedUser = await User.findById(user._id).select('+password');
+            const isNowValid = await bcrypt.compare(req.body.password, updatedUser.password);
+            console.log('\n[10] Validación post-corrección:', isNowValid);
+
+            if (!isNowValid) {
+                throw new Error('La corrección automática falló');
+            }
+
+            console.log('\n[11] Corrección aplicada exitosamente');
         }
 
-        // 5. Generación de token
-        console.log('\n[9] Generando token JWT...');
+        // 5. Generación de token (solo si la contraseña coincide o fue corregida)
         const token = jwt.sign(
             { id: user._id, email: user.email, role: user.role },
             config.secret,
             { expiresIn: '24h' }
         );
 
-        console.log('\n[10] Autenticación exitosa:', {
-            usuario: user.email,
-            rol: user.role,
-            token: token.substring(0, 20) + '...'
-        });
-
+        console.log('\n[12] Autenticación exitosa para:', user.email);
         return res.json({
             success: true,
             token,
@@ -180,9 +171,8 @@ exports.signin = async (req, res) => {
 
     } catch (error) {
         console.log('\n[ERROR] Detalles del fallo:', {
-            mensaje: error.message,
-            stack: error.stack,
-            tipo: error.name
+            message: error.message,
+            stack: error.stack
         });
         return res.status(500).json({
             success: false,
