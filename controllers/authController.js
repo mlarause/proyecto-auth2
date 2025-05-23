@@ -17,64 +17,58 @@ const checkPermission = (userRole, allowedRoles) => {
 
 // 1. Registro de usuarios (SOLO ADMIN)
 exports.signup = async (req, res) => {
-  try {
-    // 1. Verificar si ya existe algún usuario (para evitar registros múltiples)
-    const userCount = await User.countDocuments();
-    
-    if (userCount > 0) {
-      return res.status(403).json({
-        success: false,
-        message: 'El registro está cerrado. Contacta al administrador.'
-      });
+    try {
+        const { username, email, password, rol } = req.body;
+
+        // Validar si usuario existe
+        const userExists = await User.findOne({ email });
+        if (userExists) {
+            return res.status(400).json({
+                success: false,
+                message: 'El usuario ya existe'
+            });
+        }
+
+        // Encriptar contraseña
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        // Crear usuario
+        const user = new User({
+            username,
+            email,
+            password: hashedPassword,
+            rol: rol || 'auxiliar'
+        });
+
+        await user.save();
+
+        // Crear token (IMPORTANTE: usando "rol")
+        const token = jwt.sign(
+            { id: user._id, rol: user.rol },
+            config.SECRET,
+            { expiresIn: '1h' }
+        );
+
+        res.status(201).json({
+            success: true,
+            message: 'Usuario registrado correctamente',
+            token,
+            user: {
+                id: user._id,
+                username: user.username,
+                email: user.email,
+                rol: user.rol
+            }
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error al registrar usuario',
+            error: error.message
+        });
     }
-
-    // 2. Validar campos requeridos
-    const { name, email, password } = req.body;
-    if (!name || !email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Nombre, email y contraseña son requeridos'
-      });
-    }
-
-    // 3. Crear primer usuario (admin por defecto)
-    const newUser = new User({
-      name: name.trim(),
-      email: email.toLowerCase().trim(),
-      password: bcrypt.hashSync(password, 8),
-      role: 'admin' // Rol de administrador por defecto
-    });
-
-    await newUser.save();
-
-    // 4. Respuesta exitosa
-    return res.status(201).json({
-      success: true,
-      message: 'Administrador inicial creado exitosamente',
-      data: {
-        id: newUser._id,
-        name: newUser.name,
-        email: newUser.email,
-        role: newUser.role
-      }
-    });
-
-  } catch (error) {
-    console.error('Error en signup:', error);
-    
-    // Manejo de errores de duplicados
-    if (error.code === 11000) {
-      return res.status(400).json({
-        success: false,
-        message: 'El email ya está registrado'
-      });
-    }
-    
-    return res.status(500).json({
-      success: false,
-      message: 'Error al registrar usuario'
-    });
-  }
 };
 
 // 2. Login (común para todos)
