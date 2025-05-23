@@ -220,88 +220,99 @@ exports.getAllUsers = async (req, res) => {
 };
 
 exports.getUserById = async (req, res) => {
-    console.log('\n=== INICIO CONSULTA USUARIO POR ID ===');
-    
-    // 1. Registro completo de parámetros
-    console.log('[1/5] Parámetros recibidos:', {
-        id: req.params.id,
-        userId: req.userId,
-        userRoles: req.roles
+    console.log('\n=== INICIO DIAGNÓSTICO getUserById ===');
+    console.log('[1] Headers recibidos:', {
+        authorization: req.headers.authorization ? '***' + req.headers.authorization.slice(-8) : null,
+        'x-access-token': req.headers['x-access-token']
+    });
+    console.log('[2] Parámetros recibidos:', req.params);
+    console.log('[3] Usuario autenticado:', {
+        id: req.userId,
+        roles: req.roles
     });
 
     try {
         const id = req.params.id;
 
-        // 2. Validación básica del ID
+        // Validación idéntica a getAllUsers
         if (!id) {
-            console.log('[2/5] ERROR: ID no proporcionado');
+            console.log('[ERROR] ID no proporcionado');
             return res.status(400).json({ 
                 success: false,
                 message: "ID de usuario requerido" 
             });
         }
 
-        // 3. Verificación de permisos (como en getAllUsers)
-        console.log('[3/5] Verificando permisos...');
+        // Permisos idénticos a getAllUsers pero para un solo usuario
         const isAllowed = req.roles.includes('admin') || 
                         req.roles.includes('coordinator') || 
                         req.userId === id;
         
         if (!isAllowed) {
-            console.log('[3/5] PERMISO DENEGADO. Roles:', req.roles);
+            console.log('[PERMISO DENEGADO] Roles:', req.roles);
             return res.status(403).json({
                 success: false,
                 message: "No autorizado"
             });
         }
 
-        // 4. Consulta directa a la base de datos
-        console.log('[4/5] Ejecutando consulta SQL...');
-        const user = await db.sequelize.query(
+        console.log('[4] Ejecutando consulta SQL...');
+        const startTime = Date.now();
+        
+        // CONSULTA IDÉNTICA EN ESTRUCTURA A getAllUsers PERO CON FILTRO POR ID
+        const result = await db.sequelize.query(
             `SELECT 
-                u.id, 
-                u.username, 
+                u.id,
+                u.username,
                 u.email,
                 u.createdAt,
                 u.updatedAt,
                 (
-                    SELECT GROUP_CONCAT(r.name) 
-                    FROM user_roles ur 
-                    JOIN roles r ON ur.roleId = r.id 
+                    SELECT GROUP_CONCAT(r.name SEPARATOR ',') 
+                    FROM roles r
+                    JOIN user_roles ur ON r.id = ur.roleId
                     WHERE ur.userId = u.id
-                ) as roles
+                ) AS roles
              FROM users u
              WHERE u.id = :id
-             LIMIT 1`, 
+             LIMIT 1`,
             {
                 replacements: { id },
-                type: db.sequelize.QueryTypes.SELECT
+                type: db.sequelize.QueryTypes.SELECT,
+                logging: console.log // <- Loggeo directo de la consulta SQL
             }
         );
 
-        // 5. Procesamiento de resultados
-        console.log('[5/5] Resultados obtenidos:', user ? 'Usuario encontrado' : 'Usuario no encontrado');
-        
-        if (!user || user.length === 0) {
+        console.log(`[5] Consulta completada en ${Date.now() - startTime}ms`);
+        console.log('[6] Resultado raw:', result);
+
+        if (!result || result.length === 0) {
+            console.log('[ERROR] Usuario no encontrado');
             return res.status(404).json({
                 success: false,
                 message: "Usuario no encontrado"
             });
         }
 
-        // Formatear respuesta (igual que getAllUsers)
+        // Procesamiento idéntico a getAllUsers
+        const userData = result[0];
         const response = {
             success: true,
             data: {
-                ...user[0],
-                roles: user[0].roles ? user[0].roles.split(',') : []
+                ...userData,
+                roles: userData.roles ? userData.roles.split(',') : []
             }
         };
+
+        console.log('[7] Respuesta exitosa:', {
+            id: response.data.id,
+            roles: response.data.roles
+        });
 
         return res.json(response);
 
     } catch (error) {
-        console.error('[ERROR] Detalles:', {
+        console.error('[ERROR CRÍTICO]', {
             message: error.message,
             stack: error.stack,
             timestamp: new Date().toISOString()
