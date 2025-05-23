@@ -18,22 +18,36 @@ const checkPermission = (userRole, allowedRoles) => {
 // 1. Registro de usuarios (SOLO ADMIN)
 exports.signup = async (req, res) => {
     try {
+        // Crear usuario
         const user = new User({
             username: req.body.username,
             email: req.body.email,
             password: bcrypt.hashSync(req.body.password, 8)
         });
 
+        // Guardar usuario en la base de datos
         const savedUser = await user.save();
-        
-        res.status(200).send({
-            success: true,
-            message: "Usuario registrado exitosamente!",
-            userId: savedUser._id
+
+        // Generar token JWT
+        const token = jwt.sign({ id: savedUser._id }, config.secret, {
+            expiresIn: 86400 // 24 horas
         });
+
+        // Responder con éxito
+        res.status(200).json({
+            success: true,
+            message: "Usuario registrado correctamente",
+            token: token,
+            user: {
+                id: savedUser._id,
+                username: savedUser.username,
+                email: savedUser.email
+            }
+        });
+
     } catch (error) {
         console.error("Error en registro:", error);
-        res.status(500).send({
+        res.status(500).json({
             success: false,
             message: "Error al registrar usuario",
             error: error.message
@@ -42,57 +56,55 @@ exports.signup = async (req, res) => {
 };
 // 2. Login (común para todos)
 exports.signin = async (req, res) => {
-  try {
-    const { email, password } = req.body;
+    try {
+        // 1. Buscar usuario
+        const user = await User.findOne({ username: req.body.username });
+        
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "Usuario no encontrado"
+            });
+        }
 
-    if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email y contraseña son requeridos'
-      });
+        // 2. Verificar contraseña
+        const passwordIsValid = bcrypt.compareSync(
+            req.body.password,
+            user.password
+        );
+
+        if (!passwordIsValid) {
+            return res.status(401).json({
+                success: false,
+                message: "Contraseña incorrecta"
+            });
+        }
+
+        // 3. Generar token
+        const token = jwt.sign({ id: user._id }, config.secret, {
+            expiresIn: config.jwtExpiration
+        });
+
+        // 4. Responder con los datos
+        res.status(200).json({
+            success: true,
+            message: "Autenticación exitosa",
+            token: token,
+            user: {
+                id: user._id,
+                username: user.username,
+                email: user.email,
+                roles: user.roles
+            }
+        });
+
+    } catch (error) {
+        console.error("[AuthController] Error en signin:", error);
+        res.status(500).json({
+            success: false,
+            message: "Error durante el login"
+        });
     }
-
-    const user = await User.findOne({ email: email.trim() }).select('+password');
-    
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Credenciales inválidas'
-      });
-    }
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: 'Credenciales inválidas'
-      });
-    }
-
-    const token = jwt.sign(
-      { id: user._id, email: user.email, role: user.role },
-      config.secret,
-      { expiresIn: '24h' }
-    );
-
-    return res.json({
-      success: true,
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role
-      }
-    });
-
-  } catch (error) {
-    console.error('Error en signin:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Error en el servidor'
-    });
-  }
 };
 
 // 3. Obtener todos los usuarios (Admin y Coordinador)
