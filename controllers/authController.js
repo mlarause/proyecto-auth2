@@ -79,72 +79,64 @@ exports.signup = async (req, res) => {
  */
 exports.signin = async (req, res) => {
     try {
-        console.log('\n==== INICIO DE PROCESO DE AUTENTICACIÓN ====');
-        console.log('Body recibido:', JSON.stringify(req.body, null, 2));
+        console.log('\n=== INICIO DE SESIÓN ===');
+        console.log('Datos recibidos:', { email: req.body.email, password: req.body.password ? '***' : null });
 
-        // 1. Validación de entrada
-        const { email, password } = req.body;
-        console.log(`Email recibido: "${email}"`);
-        console.log(`Password recibido: "${password}"`);
-
-        if (!email || !password) {
-            console.log('Error: Faltan credenciales');
+        // 1. Validación básica sin modificar estructura
+        if (!req.body.email || !req.body.password) {
+            console.log('Campos incompletos');
             return res.status(400).json({
                 success: false,
                 message: 'Email y contraseña son requeridos'
             });
         }
 
-        // 2. Buscar usuario en la base de datos
-        console.log('\nBuscando usuario en la base de datos...');
-        const user = await User.findOne({ email: email.trim() })
-            .select('+password +status')
-            .lean();
+        // 2. Búsqueda segura del usuario
+        const user = await User.findOne({ 
+            email: req.body.email 
+        }).select('+password +status');
         
-        console.log('Usuario encontrado:', user ? 
-            `ID: ${user._id}, Email: ${user.email}, Status: ${user.status}` : 
-            'NO ENCONTRADO');
+        console.log('Usuario encontrado:', user ? {
+            _id: user._id,
+            email: user.email,
+            status: user.status,
+            passwordHash: user.password ? '***' : null
+        } : 'No encontrado');
 
         if (!user || user.status !== true) {
-            console.log('Error: Usuario no existe o está inactivo');
+            console.log('Usuario no existe o está inactivo');
             return res.status(401).json({
                 success: false,
                 message: 'Credenciales inválidas'
             });
         }
 
-        // 3. Comparación de contraseñas
-        console.log('\nComparando contraseñas...');
-        console.log(`Contraseña recibida (plain): "${password}"`);
-        console.log(`Contraseña almacenada (hash): "${user.password}"`);
-        
-        const isMatch = await bcrypt.compare(password.trim(), user.password);
+        // 3. Comparación de contraseñas con debug
+        console.log('Comparando contraseñas...');
+        const isMatch = await bcrypt.compare(req.body.password, user.password);
         console.log('Resultado comparación:', isMatch);
 
         if (!isMatch) {
-            console.log('Error: Contraseña no coincide');
+            console.log('Contraseña no coincide');
+            // DEBUG: Generar hash temporal para diagnóstico
+            const tempHash = await bcrypt.hash(req.body.password, 8);
+            console.log('Hash generado con misma contraseña:', tempHash);
+            console.log('Hash almacenado en DB:', user.password);
+            
             return res.status(401).json({
                 success: false,
                 message: 'Credenciales inválidas'
             });
         }
 
-        // 4. Generar token JWT
-        console.log('\nGenerando token JWT...');
+        // 4. Generación de token (sin cambios)
         const token = jwt.sign(
-            {
-                id: user._id,
-                email: user.email,
-                role: user.role
-            },
+            { id: user._id, email: user.email, role: user.role },
             config.secret,
             { expiresIn: '24h' }
         );
 
-        console.log('\n==== AUTENTICACIÓN EXITOSA ====');
-        console.log(`Usuario: ${user.email}`);
-        console.log(`Token generado: ${token.substring(0, 20)}...`);
-
+        console.log('Autenticación exitosa');
         return res.json({
             success: true,
             token,
@@ -156,9 +148,7 @@ exports.signin = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('\n==== ERROR EN EL PROCESO ====');
-        console.error('Error completo:', error);
-        console.error('Stack trace:', error.stack);
+        console.error('Error en authController:', error);
         return res.status(500).json({
             success: false,
             message: 'Error en el servidor'
