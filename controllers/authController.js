@@ -78,41 +78,95 @@ exports.signup = async (req, res) => {
  * @access  Public
  */
 exports.signin = async (req, res) => {
+    console.log('\n=== INICIO DE SESIÓN - DIAGNÓSTICO ===');
+    
     try {
-        const { email, password } = req.body;
+        // 1. Log completa del request recibido
+        console.log('\n[1] Request recibido:', {
+            headers: req.headers,
+            body: {
+                email: req.body.email,
+                password: req.body.password ? '***' : 'NO PROVISTA'
+            },
+            method: req.method,
+            url: req.originalUrl
+        });
 
-        // Validación básica
-        if (!email || !password) {
+        // 2. Validación de campos
+        if (!req.body.email || !req.body.password) {
+            console.log('\n[2] Error: Campos faltantes', {
+                email_provisto: !!req.body.email,
+                password_provisto: !!req.body.password
+            });
             return res.status(400).json({
                 success: false,
                 message: 'Email y contraseña son requeridos'
             });
         }
 
-        // Buscar usuario
-        const user = await User.findOne({ email: email.trim() }).select('+password');
+        // 3. Búsqueda del usuario con logging extendido
+        console.log('\n[3] Buscando usuario en BD:', {
+            email_buscado: req.body.email.trim()
+        });
+        
+        const user = await User.findOne({ 
+            email: req.body.email.trim() 
+        }).select('+password +status');
+        
+        console.log('\n[4] Resultado búsqueda usuario:', user ? {
+            id: user._id,
+            email: user.email,
+            status: user.status,
+            password_hash: user.password ? '***' : 'NO HASH'
+        } : 'USUARIO NO ENCONTRADO');
+
         if (!user || user.status !== true) {
+            console.log('\n[5] Error: Usuario no válido', {
+                usuario_encontrado: !!user,
+                estado_usuario: user?.status
+            });
             return res.status(401).json({
                 success: false,
                 message: 'Credenciales inválidas'
             });
         }
 
-        // Comparación segura de contraseñas
-        const isMatch = await bcrypt.compare(password, user.password);
+        // 4. Comparación de contraseñas con diagnóstico detallado
+        console.log('\n[6] Comparando contraseñas...');
+        console.log('Contraseña recibida (plain):', req.body.password);
+        console.log('Hash almacenado en BD:', user.password);
+        
+        const isMatch = await bcrypt.compare(req.body.password, user.password);
+        console.log('\n[7] Resultado comparación bcrypt:', isMatch);
+
         if (!isMatch) {
+            // Diagnóstico adicional: Generar hash temporal para comparación
+            const tempHash = await bcrypt.hash(req.body.password, 8);
+            console.log('\n[8] Diagnóstico hash:', {
+                hash_generado_ahora: tempHash,
+                hash_almacenado: user.password,
+                coinciden: tempHash === user.password
+            });
+            
             return res.status(401).json({
                 success: false,
                 message: 'Credenciales inválidas'
             });
         }
 
-        // Generar token
+        // 5. Generación de token
+        console.log('\n[9] Generando token JWT...');
         const token = jwt.sign(
             { id: user._id, email: user.email, role: user.role },
             config.secret,
             { expiresIn: '24h' }
         );
+
+        console.log('\n[10] Autenticación exitosa:', {
+            usuario: user.email,
+            rol: user.role,
+            token: token.substring(0, 20) + '...'
+        });
 
         return res.json({
             success: true,
@@ -125,14 +179,17 @@ exports.signin = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error en signin:', error);
+        console.log('\n[ERROR] Detalles del fallo:', {
+            mensaje: error.message,
+            stack: error.stack,
+            tipo: error.name
+        });
         return res.status(500).json({
             success: false,
             message: 'Error en el servidor'
         });
     }
 };
-
 /**
  * @desc    Verificar token
  * @route   GET /api/auth/verify
