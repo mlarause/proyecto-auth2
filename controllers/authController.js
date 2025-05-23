@@ -52,30 +52,53 @@ exports.signin = async (req, res) => {
     console.log('[AuthController] Body recibido:', req.body);
     
     // 1. Validación de campos requeridos
-    if (!req.body.username || !req.body.password) {
+    if ((!req.body.username && !req.body.email) || !req.body.password) {
       console.log('[AuthController] Campos faltantes:', {
         username: req.body.username,
+        email: req.body.email,
         password: req.body.password ? '***' : 'NO PROVISTO'
       });
       return res.status(400).json({
         success: false,
-        message: "Username y password son requeridos"
+        message: "Se requiere email/username y password"
       });
     }
 
-    // 2. Buscar usuario
-    const user = await User.findOne({ username: req.body.username });
+    // 2. Buscar usuario con todos los campos necesarios
+    const user = await User.findOne({
+      $or: [
+        { username: req.body.username },
+        { email: req.body.email }
+      ]
+    }).select('+password'); // Asegurar que traiga el campo password
     
     if (!user) {
-      console.log('[AuthController] Usuario no encontrado:', req.body.username);
+      console.log('[AuthController] Usuario no encontrado');
       return res.status(404).json({
         success: false,
         message: "Usuario no encontrado"
       });
     }
 
-    // 3. Verificar contraseña
+    // 3. Validar que el usuario tenga contraseña
+    if (!user.password) {
+      console.log('[AuthController] Usuario sin contraseña registrada');
+      return res.status(500).json({
+        success: false,
+        message: "Error en la configuración del usuario"
+      });
+    }
+
+    // 4. Verificar contraseña con validación adicional
     console.log('[AuthController] Comparando contraseñas...');
+    if (!req.body.password || typeof req.body.password !== 'string') {
+      console.log('[AuthController] Contraseña no válida en request');
+      return res.status(400).json({
+        success: false,
+        message: "Formato de contraseña inválido"
+      });
+    }
+
     const passwordIsValid = bcrypt.compareSync(
       req.body.password,
       user.password
@@ -89,22 +112,20 @@ exports.signin = async (req, res) => {
       });
     }
 
-    // 4. Generar token
+    // 5. Generar token
     const token = jwt.sign({ id: user._id }, config.secret, {
       expiresIn: config.jwtExpiration
     });
 
-    // 5. Responder
+    // 6. Responder (ocultando password)
+    const userResponse = user.toObject();
+    delete userResponse.password;
+
     res.status(200).json({
       success: true,
       message: "Login exitoso",
       token: token,
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        role: user.role
-      }
+      user: userResponse
     });
 
   } catch (error) {
