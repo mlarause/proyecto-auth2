@@ -21,11 +21,11 @@ const userSchema = new mongoose.Schema({
     minlength: 6,
     select: false
   },
-  role: {
+   role: {
     type: String,
-    enum: ['user', 'admin'],
-    default: 'user'
-  }
+    enum: ['admin', 'coordinador', 'auxiliar'],
+    default: 'auxiliar'
+  },
 }, {
   timestamps: true,
   versionKey: false
