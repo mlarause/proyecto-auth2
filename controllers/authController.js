@@ -18,22 +18,30 @@ const checkPermission = (userRole, allowedRoles) => {
 // 1. Registro de usuarios (SOLO ADMIN)
 exports.signup = async (req, res) => {
     try {
-        // Crear usuario
+        console.log('[AuthController] Datos recibidos en signup:', {
+            username: req.body.username,
+            email: req.body.email,
+            roles: req.body.roles // Agregamos log para ver los roles recibidos
+        });
+
+        // Crear usuario con los roles proporcionados o 'auxiliar' por defecto
         const user = new User({
             username: req.body.username,
             email: req.body.email,
-            password: bcrypt.hashSync(req.body.password, 8)
+            password: bcrypt.hashSync(req.body.password, 8),
+            roles: req.body.roles || ['auxiliar'] // Usar roles proporcionados o defecto
         });
 
-        // Guardar usuario en la base de datos
+        console.log('[AuthController] Usuario a crear:', user);
+
         const savedUser = await user.save();
-
-        // Generar token JWT
+        
+        // Generar token
         const token = jwt.sign({ id: savedUser._id }, config.secret, {
-            expiresIn: 86400 // 24 horas
+            expiresIn: config.jwtExpiration
         });
 
-        // Responder con éxito
+        // Respuesta con datos del usuario registrado
         res.status(200).json({
             success: true,
             message: "Usuario registrado correctamente",
@@ -41,12 +49,13 @@ exports.signup = async (req, res) => {
             user: {
                 id: savedUser._id,
                 username: savedUser.username,
-                email: savedUser.email
+                email: savedUser.email,
+                roles: savedUser.roles // Incluir roles en la respuesta
             }
         });
 
     } catch (error) {
-        console.error("Error en registro:", error);
+        console.error('[AuthController] Error en signup:', error);
         res.status(500).json({
             success: false,
             message: "Error al registrar usuario",
