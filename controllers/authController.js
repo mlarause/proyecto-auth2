@@ -220,122 +220,90 @@ exports.getAllUsers = async (req, res) => {
 };
 
 exports.getUserById = async (req, res) => {
-    const debug = {
-        step: 'INICIO',
-        timestamp: new Date().toISOString(),
-        params: req.params,
-        user: {
-            id: req.userId,
-            roles: req.roles
+    console.log('\n=== INICIO DIAGNÓSTICO GET USER BY ID ===');
+    
+    // 1. Registro completo de la solicitud
+    console.log('[1/5] Parámetros recibidos:', {
+        id: req.params.id,
+        userId: req.userId,
+        userRoles: req.roles,
+        headers: {
+            authorization: req.headers.authorization ? '***' + req.headers.authorization.slice(-8) : null
         }
-    };
-
-    console.log('\n=== DIAGNÓSTICO PROFUNDO getUserById ===');
-    console.log('[1] Estado inicial:', JSON.stringify(debug, null, 2));
+    });
 
     try {
-        debug.step = 'VALIDACION_ID';
         const id = req.params.id;
-        
+
+        // 2. Validación básica del ID
         if (!id) {
-            debug.error = 'ID no proporcionado';
-            console.log('[2] Error validación:', JSON.stringify(debug, null, 2));
+            console.log('[2/5] ERROR: ID no proporcionado');
             return res.status(400).json({ 
                 success: false,
                 message: "ID de usuario requerido" 
             });
         }
-        debug.id = id;
 
-        debug.step = 'VERIFICACION_PERMISOS';
+        // 3. Verificación de permisos
+        console.log('[3/5] Verificando permisos...');
         const isAllowed = req.roles.includes('admin') || 
                         req.roles.includes('coordinator') || 
                         req.userId === id;
-        debug.permisos = {
-            isAdmin: req.roles.includes('admin'),
-            isCoordinator: req.roles.includes('coordinator'),
-            isSelf: req.userId === id,
-            accesoPermitido: isAllowed
-        };
-
+        
         if (!isAllowed) {
-            debug.error = 'Acceso denegado por permisos';
-            console.log('[3] Permiso denegado:', JSON.stringify(debug, null, 2));
+            console.log('[3/5] PERMISO DENEGADO. Roles:', req.roles);
             return res.status(403).json({
                 success: false,
                 message: "No autorizado"
             });
         }
 
-        debug.step = 'PRE_CONSULTA_DB';
-        console.log('[4] Pre-consulta a DB:', JSON.stringify(debug, null, 2));
+        // 4. Consulta directa usando findByPk (más estable que raw query)
+        console.log('[4/5] Buscando usuario con findByPk...');
+        const user = await db.user.findByPk(id, {
+            attributes: ['id', 'username', 'email', 'createdAt', 'updatedAt'],
+            raw: true
+        });
 
-        // Consulta directa sin relaciones complejas
-        debug.step = 'CONSULTA_DB_PRINCIPAL';
-        debug.query = `SELECT id, username, email, createdAt, updatedAt FROM users WHERE id = :id LIMIT 1`;
-        
-        console.log('[5] Ejecutando consulta principal:', debug.query);
-        const startTime = Date.now();
-        
-        const user = await db.sequelize.query(
-            debug.query,
-            {
-                replacements: { id },
-                type: db.sequelize.QueryTypes.SELECT
-            }
-        );
-        debug.dbTime = `${Date.now() - startTime}ms`;
-        debug.dbResult = user;
-
-        if (!user || user.length === 0) {
-            debug.error = 'Usuario no encontrado';
-            console.log('[6] Usuario no existe:', JSON.stringify(debug, null, 2));
+        console.log('[4/5] Resultado usuario:', user);
+        if (!user) {
+            console.log('[4/5] ERROR: Usuario no encontrado');
             return res.status(404).json({
                 success: false,
                 message: "Usuario no encontrado"
             });
         }
 
-        // Consulta de roles por separado
-        debug.step = 'CONSULTA_ROLES';
-        debug.rolesQuery = `SELECT r.name FROM roles r JOIN user_roles ur ON r.id = ur.roleId WHERE ur.userId = :userId`;
-        
-        console.log('[7] Ejecutando consulta de roles:', debug.rolesQuery);
-        const rolesStartTime = Date.now();
-        
+        // 5. Consulta de roles por separado
+        console.log('[5/5] Buscando roles del usuario...');
         const roles = await db.sequelize.query(
-            debug.rolesQuery,
+            `SELECT r.name FROM roles r
+             JOIN user_roles ur ON r.id = ur.roleId
+             WHERE ur.userId = :userId`,
             {
                 replacements: { userId: id },
                 type: db.sequelize.QueryTypes.SELECT
             }
         );
-        debug.rolesTime = `${Date.now() - rolesStartTime}ms`;
-        debug.rolesResult = roles;
 
         // Formatear respuesta
-        debug.step = 'FORMATEO_RESPUESTA';
         const response = {
             success: true,
             data: {
-                ...user[0],
+                ...user,
                 roles: roles.map(r => r.name)
             }
         };
-        debug.response = response;
 
-        debug.step = 'COMPLETADO';
-        console.log('[8] Proceso completado:', JSON.stringify(debug, null, 2));
-        
+        console.log('=== CONSULTA EXITOSA ===');
         return res.json(response);
 
     } catch (error) {
-        debug.step = 'ERROR';
-        debug.error = {
+        console.error('[ERROR CRÍTICO]', {
             message: error.message,
-            stack: error.stack
-        };
-        console.error('[ERROR] Detalles completos:', JSON.stringify(debug, null, 2));
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+        });
         return res.status(500).json({
             success: false,
             message: "Error al obtener usuario",
