@@ -220,47 +220,43 @@ exports.getAllUsers = async (req, res) => {
 };
 
 exports.getUserById = async (req, res) => {
-    console.log('\n=== INICIO DIAGNÓSTICO getUserById ===');
+    console.log('\n=== INICIO CONSULTA USUARIO POR ID ===');
     
-    // 1. Registro completo de la solicitud (como en getAllUsers)
-    console.log('[1/6] Parámetros recibidos:', {
+    // 1. Registro completo de parámetros
+    console.log('[1/5] Parámetros recibidos:', {
         id: req.params.id,
         userId: req.userId,
-        userRoles: req.roles,
-        headers: {
-            authorization: req.headers.authorization ? '***' + req.headers.authorization.slice(-8) : null,
-            'x-access-token': req.headers['x-access-token']
-        }
+        userRoles: req.roles
     });
 
     try {
         const id = req.params.id;
 
-        // 2. Validación de entrada (igual que en getAllUsers)
+        // 2. Validación básica del ID
         if (!id) {
-            console.log('[2/6] ERROR: ID no proporcionado');
+            console.log('[2/5] ERROR: ID no proporcionado');
             return res.status(400).json({ 
                 success: false,
                 message: "ID de usuario requerido" 
             });
         }
 
-        // 3. Control de acceso (mismo patrón que getAllUsers)
-        console.log('[3/6] Verificando permisos...');
-        const isAdmin = req.roles.includes('admin');
-        const isCoordinator = req.roles.includes('coordinator');
-        const isSelf = req.userId === id;
-
-        if (!isAdmin && !isCoordinator && !isSelf) {
-            console.log('[3/6] PERMISO DENEGADO. Roles:', req.roles);
+        // 3. Verificación de permisos (como en getAllUsers)
+        console.log('[3/5] Verificando permisos...');
+        const isAllowed = req.roles.includes('admin') || 
+                        req.roles.includes('coordinator') || 
+                        req.userId === id;
+        
+        if (!isAllowed) {
+            console.log('[3/5] PERMISO DENEGADO. Roles:', req.roles);
             return res.status(403).json({
                 success: false,
-                message: "No autorizado para ver este usuario"
+                message: "No autorizado"
             });
         }
 
-        // 4. Consulta principal (mismo enfoque que getAllUsers pero para un ID)
-        console.log('[4/6] Ejecutando consulta para usuario ID:', id);
+        // 4. Consulta directa a la base de datos
+        console.log('[4/5] Ejecutando consulta SQL...');
         const user = await db.sequelize.query(
             `SELECT 
                 u.id, 
@@ -276,24 +272,24 @@ exports.getUserById = async (req, res) => {
                 ) as roles
              FROM users u
              WHERE u.id = :id
-             LIMIT 1`,
+             LIMIT 1`, 
             {
                 replacements: { id },
                 type: db.sequelize.QueryTypes.SELECT
             }
         );
 
-        // 5. Procesamiento de resultados (igual que getAllUsers)
-        console.log('[5/6] Resultados obtenidos:', user);
+        // 5. Procesamiento de resultados
+        console.log('[5/5] Resultados obtenidos:', user ? 'Usuario encontrado' : 'Usuario no encontrado');
+        
         if (!user || user.length === 0) {
-            console.log('[5/6] ERROR: Usuario no encontrado');
             return res.status(404).json({
                 success: false,
                 message: "Usuario no encontrado"
             });
         }
 
-        // 6. Formatear respuesta (mismo formato que getAllUsers)
+        // Formatear respuesta (igual que getAllUsers)
         const response = {
             success: true,
             data: {
@@ -302,18 +298,12 @@ exports.getUserById = async (req, res) => {
             }
         };
 
-        console.log('[6/6] RESPUESTA EXITOSA:', {
-            id: response.data.id,
-            roles: response.data.roles
-        });
-
         return res.json(response);
 
     } catch (error) {
-        console.error('[ERROR CRÍTICO] Detalles:', {
+        console.error('[ERROR] Detalles:', {
             message: error.message,
             stack: error.stack,
-            params: req.params,
             timestamp: new Date().toISOString()
         });
         return res.status(500).json({
