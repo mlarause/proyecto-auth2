@@ -355,3 +355,47 @@ exports.verifyToken = async (req, res) => {
         });
     }
 };
+
+exports.findOne = async (req, res) => {
+    const id = req.params.id;
+    console.log('[DEBUG] Iniciando findOne, ID recibido:', id);
+    console.log('[DEBUG] User ID from token:', req.userId);
+    console.log('[DEBUG] User roles:', req.roles);
+
+    try {
+        // 1. Verificar permisos
+        const isAdmin = req.roles.includes('admin');
+        const isCoordinator = req.roles.includes('coordinator');
+        
+        if (!isAdmin && !isCoordinator && req.userId !== id) {
+            console.log('[DEBUG] Permiso denegado: usuario no autorizado');
+            return res.status(403).send({ message: 'No autorizado' });
+        }
+
+        // 2. Buscar usuario con relaciones
+        console.log('[DEBUG] Buscando usuario en DB...');
+        const user = await User.findByPk(id, {
+            include: [{
+                model: Role,
+                attributes: ['id', 'name'],
+                through: { attributes: [] }
+            }],
+            attributes: { exclude: ['password'] }
+        });
+
+        if (!user) {
+            console.log('[DEBUG] Usuario no encontrado');
+            return res.status(404).send({ message: 'Usuario no encontrado' });
+        }
+
+        console.log('[DEBUG] Usuario encontrado:', JSON.stringify(user, null, 2));
+        res.send(user);
+    } catch (error) {
+        console.error('[ERROR] En findOne:', error);
+        res.status(500).send({
+            message: 'Error al recuperar usuario',
+            error: error.message,
+            stack: error.stack // Solo para desarrollo
+        });
+    }
+};
