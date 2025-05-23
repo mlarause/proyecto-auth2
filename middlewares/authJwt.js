@@ -1,50 +1,47 @@
 const jwt = require('jsonwebtoken');
 const config = require('../config/auth.config');
 
-const verifyToken = (req, res, next) => {
-    // Obtener token de headers, cookies o query params
-    const token = req.headers['x-access-token'] || 
-                 req.cookies?.token || 
-                 req.query?.token;
+console.log('[AuthJWT] Configuración cargada:', config.secret ? '***' + config.secret.slice(-5) : 'NO CONFIGURADO');
 
-    if (!token) {
-        console.log('Intento de acceso sin token');
-        return res.status(403).json({
-            success: false,
-            message: 'No se proporcionó token de autenticación'
-        });
-    }
-
+// Definición del middleware
+const verifyTokenFn = (req, res, next) => {
+    console.log('\n[AuthJWT] Middleware ejecutándose para:', req.originalUrl);
+    
     try {
-        // Verificar y decodificar token
-        const decoded = jwt.verify(token, config.secret);
-        
-        // Verificar que el token contenga información esencial
-        if (!decoded.id || !decoded.role) {
-            console.error('Token incompleto:', decoded);
-            return res.status(401).json({
+        const token = req.headers['x-access-token'] || req.headers.authorization?.split(' ')[1];
+        console.log('[AuthJWT] Token recibido:', token ? '***' + token.slice(-8) : 'NO PROVISTO');
+
+        if (!token) {
+            console.log('[AuthJWT] Error: Token no proporcionado');
+            return res.status(403).json({
                 success: false,
-                message: 'Token inválido (falta información de usuario)'
+                message: 'Token no proporcionado'
             });
         }
 
-        // Adjuntar información al request
+        const decoded = jwt.verify(token, config.secret);
         req.userId = decoded.id;
         req.userRole = decoded.role;
-        req.userEmail = decoded.email;
-
-        console.log(`Acceso autorizado para: ${decoded.email} (${decoded.role})`);
+        console.log('[AuthJWT] Token válido para:', decoded.email);
         next();
-
     } catch (error) {
-        console.error('Error al verificar token:', error.message);
+        console.error('[AuthJWT] Error:', error.name, '-', error.message);
         return res.status(401).json({
             success: false,
-            message: 'Token inválido o expirado'
+            message: 'Token inválido',
+            error: error.name
         });
     }
 };
 
+// Validación antes de exportar
+if (typeof verifyTokenFn !== 'function') {
+    console.error('[AuthJWT] ERROR: verifyTokenFn no es una función!');
+    throw new Error('verifyTokenFn debe ser una función');
+}
+
+console.log('[AuthJWT] Middleware verifyTokenFn es una función:', typeof verifyTokenFn);
+
 module.exports = {
-    verifyToken
+    verifyToken: verifyTokenFn
 };
