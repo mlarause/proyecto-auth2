@@ -220,45 +220,37 @@ exports.getAllUsers = async (req, res) => {
 };
 
 exports.getUserById = async (req, res) => {
-    console.log('\n=== INICIO DIAGNÓSTICO DETALLADO ===');
-    console.log('[1] Parámetros recibidos:', {
-        id: req.params.id,
-        userId: req.userId,
-        userRoles: req.roles
-    });
+    console.log('\n=== INICIO CONSULTA USUARIO POR ID ===');
+    console.log('[USER] ID solicitado:', req.params.id);
+    console.log('[USER] Usuario solicitante:', req.userId);
+    console.log('[USER] Roles del solicitante:', req.roles);
 
     try {
         const id = req.params.id;
 
-        // Validación básica del ID
+        // Validación igual que en categoryController
         if (!id) {
             console.log('[ERROR] ID no proporcionado');
-            return res.status(400).json({ 
+            return res.status(400).send({ 
                 success: false,
-                message: "ID de usuario requerido" 
+                message: "Se requiere ID de usuario" 
             });
         }
 
-        // Verificación de permisos (sin modificar authJwt)
-        console.log('[2] Verificando permisos...');
-        const isAllowed = req.roles.includes('admin') || 
-                         req.roles.includes('coordinator') || 
-                         req.userId === id;
+        // Verificación de permisos como en categories
+        const isAdmin = req.roles.includes('admin');
+        const isCoordinator = req.roles.includes('coordinator');
         
-        if (!isAllowed) {
-            console.log('[PERMISO DENEGADO]', {
-                roles: req.roles,
-                userId: req.userId,
-                requestedId: id
-            });
-            return res.status(403).json({
+        if (!isAdmin && !isCoordinator && req.userId !== id) {
+            console.log('[PERMISO] Acceso denegado');
+            return res.status(403).send({ 
                 success: false,
-                message: "No autorizado"
+                message: "No autorizado para ver este usuario" 
             });
         }
 
-        // Consulta directa sin relaciones problemáticas
-        console.log('[3] Buscando usuario en DB...');
+        // Consulta directa similar a categoryController
+        console.log('[DB] Ejecutando consulta...');
         const user = await db.sequelize.query(
             `SELECT u.id, u.username, u.email, u.createdAt, u.updatedAt,
              GROUP_CONCAT(r.name) as roles
@@ -273,17 +265,15 @@ exports.getUserById = async (req, res) => {
             }
         );
 
-        console.log('[4] Resultado consulta:', user);
-
         if (!user || user.length === 0) {
             console.log('[ERROR] Usuario no encontrado');
-            return res.status(404).json({
+            return res.status(404).send({ 
                 success: false,
-                message: "Usuario no encontrado"
+                message: "Usuario no encontrado" 
             });
         }
 
-        // Formatear respuesta
+        // Formatear respuesta igual que en categories
         const response = {
             success: true,
             data: {
@@ -296,18 +286,17 @@ exports.getUserById = async (req, res) => {
             }
         };
 
-        console.log('[5] Respuesta exitosa:', response);
-        return res.json(response);
+        console.log('[EXITO] Usuario encontrado:', response);
+        res.send(response);
 
     } catch (error) {
-        console.error('[ERROR CRÍTICO]', {
+        console.error('[ERROR]', {
             message: error.message,
-            stack: error.stack,
-            timestamp: new Date().toISOString()
+            stack: error.stack
         });
-        return res.status(500).json({
+        res.status(500).send({
             success: false,
-            message: "Error al obtener usuario",
+            message: "Error al recuperar usuario",
             error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
