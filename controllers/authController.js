@@ -219,15 +219,19 @@ exports.getAllUsers = async (req, res) => {
 };
 
 exports.getUserById = async (req, res) => {
-    console.log('\n=== INICIO CONSULTA POR ID ===');
-    console.log('[PARAMS] ID solicitado:', req.params.id);
-    console.log('[USER] Usuario que solicita:', req.userId);
-    console.log('[ROLES] Roles del solicitante:', req.userRole);
+    console.log('\n=== INICIO DIAGNÓSTICO DETALLADO ===');
+    console.log('[1/8] Parámetros recibidos:', {
+        params: req.params,
+        userId: req.userId,
+        userRoles: req.roles, // Cambiado de req.userRole a req.roles
+        headers: {
+            authorization: req.headers.authorization ? '***' + req.headers.authorization.slice(-8) : null
+        }
+    });
 
     try {
         const requestedId = req.params.id;
-        const requestingUserId = req.userId;
-        const requestingUserRole = req.userRole;
+        console.log('[2/8] ID solicitado:', requestedId);
 
         // Validación básica del ID
         if (!requestedId) {
@@ -235,58 +239,67 @@ exports.getUserById = async (req, res) => {
             return res.status(400).send({ message: "ID de usuario requerido" });
         }
 
-        // Verificación de permisos
-        if (requestingUserRole !== 'admin' && 
-            requestingUserRole !== 'coordinator' && 
-            requestingUserId !== requestedId) {
-            console.log('[PERMISO] Acceso denegado');
+        // Verificación de permisos (adaptado al sistema de roles existente)
+        console.log('[3/8] Verificando permisos...');
+        const isAdmin = req.roles.includes('admin');
+        const isCoordinator = req.roles.includes('coordinator');
+        const isSelf = req.userId === requestedId;
+
+        if (!isAdmin && !isCoordinator && !isSelf) {
+            console.log('[PERMISO] Acceso denegado. Roles del usuario:', req.roles);
             return res.status(403).send({ message: "No autorizado" });
         }
 
-        // Consulta directa sin relaciones complejas
-        console.log('[DB] Buscando usuario...');
-        const user = await User.findByPk(requestedId, {
-            attributes: { exclude: ['password'] },
-            raw: true
+        // Consulta optimizada con manejo seguro de relaciones
+        console.log('[4/8] Buscando usuario con roles...');
+        const user = await User.findOne({
+            where: { id: requestedId },
+            include: [{
+                model: Role,
+                attributes: ['name'],
+                through: { attributes: [] }
+            }],
+            attributes: { exclude: ['password'] }
         });
 
+        console.log('[5/8] Resultado de la consulta:', user ? 'Usuario encontrado' : 'Usuario no encontrado');
+
         if (!user) {
-            console.log('[ERROR] Usuario no encontrado');
+            console.log('[ERROR] Usuario no existe en BD');
             return res.status(404).send({ message: "Usuario no encontrado" });
         }
 
-        // Consulta de roles por separado
-        console.log('[DB] Buscando roles...');
-        const roles = await db.sequelize.query(
-            `SELECT r.name FROM roles r 
-             JOIN user_roles ur ON r.id = ur.roleId 
-             WHERE ur.userId = :userId`,
-            {
-                replacements: { userId: requestedId },
-                type: db.sequelize.QueryTypes.SELECT
-            }
-        );
+        // Extraer roles de forma segura
+        console.log('[6/8] Procesando roles...');
+        const userRoles = user.Roles ? user.Roles.map(role => role.name) : [];
+        console.log('[7/8] Roles del usuario:', userRoles);
 
         // Formatear respuesta
         const response = {
             id: user.id,
             username: user.username,
             email: user.email,
-            roles: roles.map(r => r.name),
+            roles: userRoles,
             createdAt: user.createdAt,
             updatedAt: user.updatedAt
         };
 
-        console.log('[EXITO] Usuario encontrado');
+        console.log('[8/8] Respuesta final:', response);
+        console.log('=== DIAGNÓSTICO COMPLETADO CON ÉXITO ===');
         res.send(response);
 
     } catch (error) {
-        console.error('[ERROR] Detalles:', {
+        console.error('=== ERROR CRÍTICO ===', {
             message: error.message,
-            stack: error.stack
+            stack: error.stack,
+            params: req.params,
+            userId: req.userId,
+            userRoles: req.roles,
+            timestamp: new Date().toISOString()
         });
         res.status(500).send({
-            message: "Error al recuperar usuario",
+            success: false,
+            message: "Error al obtener usuario",
             error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
