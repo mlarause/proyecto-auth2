@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const config = require('../config/auth.config');
+const { User } = require("../models");
 
 console.log('[AuthJWT] Configuración cargada:', config.secret ? '***' + config.secret.slice(-5) : 'NO CONFIGURADO');
 
@@ -32,6 +33,21 @@ const verifyTokenFn = (req, res, next) => {
             error: error.name
         });
     }
+};
+
+const AuthJWT = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) {
+    return res.status(401).json({ message: 'Token no proporcionado' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (error) {
+    return res.status(401).json({ message: 'Token inválido' });
+  }
 };
 
 // Validación antes de exportar

@@ -167,7 +167,7 @@ exports.signin = async (req, res) => {
                 id: user._id,
                 email: user.email,
                 role: user.role
-            }
+            }y
         });
 
     } catch (error) {
@@ -220,34 +220,32 @@ exports.getAllUsers = async (req, res) => {
 };
 
 // userController.js - SOLO CAMBIAR ESTA FUNCIÓN
+// userController.js - Versión corregida
 exports.getUserById = async (req, res) => {
   try {
-    // 1. Verifica si el ID existe y es válido (sin romper conexiones)
-    if (!req.params.id) {
-      return res.status(400).json({ message: "Se requiere ID de usuario" });
-    }
-
-    // 2. Consulta segura (usa la misma conexión existente)
-    const user = await User.findOne(
-      { _id: req.params.id },
-      { password: 0, __v: 0 } // Excluye campos sensibles
-    ).lean();
-
+    // 1. Consulta directa y segura (igual que tus otras funciones)
+    const user = await User.findById(req.params.id).select('-password -__v -refreshToken');
+    
+    // 2. Verificación mejorada que no depende del campo 'role'
     if (!user) {
-      return res.status(404).json({ message: "Usuario no encontrado" });
+      return res.status(404).json({ 
+        success: false,
+        message: "Usuario no encontrado" 
+      });
     }
 
-    // 3. Devuelve en el mismo formato que tus otras funciones
+    // 3. Respuesta con estructura segura
     res.status(200).json({
       success: true,
-      data: user
+      data: user.toObject() // Convertir a objeto plano
     });
 
   } catch (error) {
-    console.error("Error en getUserById:", error.message); // Solo log del mensaje
+    console.error('Error en getUserById:', error.message);
     res.status(500).json({ 
       success: false,
-      message: "Error al buscar usuario"
+      message: "Error al obtener usuario"
+      // No exponer detalles del error en producción
     });
   }
 };
