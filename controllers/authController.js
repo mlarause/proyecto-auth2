@@ -18,59 +18,28 @@ const checkPermission = (userRole, allowedRoles) => {
 // 1. Registro de usuarios (SOLO ADMIN)
 exports.signup = async (req, res) => {
     try {
-        const { username, email, password, rol } = req.body;
-
-        // Validar si usuario existe
-        const userExists = await User.findOne({ email });
-        if (userExists) {
-            return res.status(400).json({
-                success: false,
-                message: 'El usuario ya existe'
-            });
-        }
-
-        // Encriptar contraseña
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password, salt);
-
-        // Crear usuario
         const user = new User({
-            username,
-            email,
-            password: hashedPassword,
-            rol: rol || 'auxiliar'
+            username: req.body.username,
+            email: req.body.email,
+            password: bcrypt.hashSync(req.body.password, 8)
         });
 
-        await user.save();
-
-        // Crear token (IMPORTANTE: usando "rol")
-        const token = jwt.sign(
-            { id: user._id, rol: user.rol },
-            config.SECRET,
-            { expiresIn: '1h' }
-        );
-
-        res.status(201).json({
+        const savedUser = await user.save();
+        
+        res.status(200).send({
             success: true,
-            message: 'Usuario registrado correctamente',
-            token,
-            user: {
-                id: user._id,
-                username: user.username,
-                email: user.email,
-                rol: user.rol
-            }
+            message: "Usuario registrado exitosamente!",
+            userId: savedUser._id
         });
-
     } catch (error) {
-        res.status(500).json({
+        console.error("Error en registro:", error);
+        res.status(500).send({
             success: false,
-            message: 'Error al registrar usuario',
+            message: "Error al registrar usuario",
             error: error.message
         });
     }
 };
-
 // 2. Login (común para todos)
 exports.signin = async (req, res) => {
   try {
