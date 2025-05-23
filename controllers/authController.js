@@ -79,44 +79,58 @@ exports.signup = async (req, res) => {
  */
 exports.signin = async (req, res) => {
     try {
-        const { email, password } = req.body;
+        console.log('\n==== INICIO DE PROCESO DE AUTENTICACIÓN ====');
+        console.log('Body recibido:', JSON.stringify(req.body, null, 2));
 
-        // 1. Validación mejorada de entrada
+        // 1. Validación de entrada
+        const { email, password } = req.body;
+        console.log(`Email recibido: "${email}"`);
+        console.log(`Password recibido: "${password}"`);
+
         if (!email || !password) {
+            console.log('Error: Faltan credenciales');
             return res.status(400).json({
                 success: false,
                 message: 'Email y contraseña son requeridos'
             });
         }
 
-        // 2. Búsqueda exacta del usuario (case-sensitive)
-        const user = await User.findOne({ 
-            email: email.trim() // Búsqueda exacta
-        }).select('+password +status');
+        // 2. Buscar usuario en la base de datos
+        console.log('\nBuscando usuario en la base de datos...');
+        const user = await User.findOne({ email: email.trim() })
+            .select('+password +status')
+            .lean();
+        
+        console.log('Usuario encontrado:', user ? 
+            `ID: ${user._id}, Email: ${user.email}, Status: ${user.status}` : 
+            'NO ENCONTRADO');
 
         if (!user || user.status !== true) {
-            console.log(`Usuario no encontrado o inactivo: ${email}`);
+            console.log('Error: Usuario no existe o está inactivo');
             return res.status(401).json({
                 success: false,
                 message: 'Credenciales inválidas'
             });
         }
 
-        // 3. Comparación directa de contraseñas (para debugging)
-        console.log(`Contraseña recibida: ${password}`);
-        console.log(`Contraseña almacenada: ${user.password}`);
-
-        // 4. Comparación con bcrypt
+        // 3. Comparación de contraseñas
+        console.log('\nComparando contraseñas...');
+        console.log(`Contraseña recibida (plain): "${password}"`);
+        console.log(`Contraseña almacenada (hash): "${user.password}"`);
+        
         const isMatch = await bcrypt.compare(password.trim(), user.password);
+        console.log('Resultado comparación:', isMatch);
+
         if (!isMatch) {
-            console.log(`Comparación de contraseña fallida para: ${email}`);
+            console.log('Error: Contraseña no coincide');
             return res.status(401).json({
                 success: false,
                 message: 'Credenciales inválidas'
             });
         }
 
-        // 5. Generar token
+        // 4. Generar token JWT
+        console.log('\nGenerando token JWT...');
         const token = jwt.sign(
             {
                 id: user._id,
@@ -126,6 +140,10 @@ exports.signin = async (req, res) => {
             config.secret,
             { expiresIn: '24h' }
         );
+
+        console.log('\n==== AUTENTICACIÓN EXITOSA ====');
+        console.log(`Usuario: ${user.email}`);
+        console.log(`Token generado: ${token.substring(0, 20)}...`);
 
         return res.json({
             success: true,
@@ -138,7 +156,9 @@ exports.signin = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error en authController.signin:', error);
+        console.error('\n==== ERROR EN EL PROCESO ====');
+        console.error('Error completo:', error);
+        console.error('Stack trace:', error.stack);
         return res.status(500).json({
             success: false,
             message: 'Error en el servidor'
