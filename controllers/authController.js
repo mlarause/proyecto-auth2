@@ -218,26 +218,34 @@ exports.getAllUsers = async (req, res) => {
     }
 };
 
-exports.findOne = async (req, res) => {
-    console.log('[USER CONTROLLER] Iniciando findOne');
-    console.log('[DEBUG] Parámetros recibidos:', {
-        id: req.params.id,
-        userId: req.userId,
-        userRoles: req.roles // Asumiendo que el middleware inyecta esto
-    });
+exports.getUserById = async (req, res) => {
+    console.log('\n=== INICIO CONSULTA POR ID ===');
+    console.log('[PARAMS] ID solicitado:', req.params.id);
+    console.log('[USER] Usuario que solicita:', req.userId);
+    console.log('[ROLES] Roles del solicitante:', req.userRole);
 
     try {
-        const id = req.params.id;
+        const requestedId = req.params.id;
+        const requestingUserId = req.userId;
+        const requestingUserRole = req.userRole;
 
-        // Validación mínima del ID (como en otros controladores)
-        if (!id) {
+        // Validación básica del ID
+        if (!requestedId) {
             console.log('[ERROR] ID no proporcionado');
             return res.status(400).send({ message: "ID de usuario requerido" });
         }
 
-        // Consulta directa sin relaciones primero (más estable)
-        console.log('[DEBUG] Buscando usuario básico...');
-        const user = await User.findByPk(id, {
+        // Verificación de permisos
+        if (requestingUserRole !== 'admin' && 
+            requestingUserRole !== 'coordinator' && 
+            requestingUserId !== requestedId) {
+            console.log('[PERMISO] Acceso denegado');
+            return res.status(403).send({ message: "No autorizado" });
+        }
+
+        // Consulta directa sin relaciones complejas
+        console.log('[DB] Buscando usuario...');
+        const user = await User.findByPk(requestedId, {
             attributes: { exclude: ['password'] },
             raw: true
         });
@@ -247,21 +255,19 @@ exports.findOne = async (req, res) => {
             return res.status(404).send({ message: "Usuario no encontrado" });
         }
 
-        // Consulta de roles por separado (más robusto)
-        console.log('[DEBUG] Buscando roles del usuario...');
+        // Consulta de roles por separado
+        console.log('[DB] Buscando roles...');
         const roles = await db.sequelize.query(
             `SELECT r.name FROM roles r 
              JOIN user_roles ur ON r.id = ur.roleId 
              WHERE ur.userId = :userId`,
             {
-                replacements: { userId: id },
+                replacements: { userId: requestedId },
                 type: db.sequelize.QueryTypes.SELECT
             }
         );
 
-        console.log('[DEBUG] Datos completos obtenidos:', { user, roles });
-
-        // Formatear respuesta igual que en otros endpoints
+        // Formatear respuesta
         const response = {
             id: user.id,
             username: user.username,
@@ -271,14 +277,13 @@ exports.findOne = async (req, res) => {
             updatedAt: user.updatedAt
         };
 
+        console.log('[EXITO] Usuario encontrado');
         res.send(response);
 
     } catch (error) {
-        console.error('[ERROR] Detalles completos:', {
+        console.error('[ERROR] Detalles:', {
             message: error.message,
-            stack: error.stack,
-            params: req.params,
-            userId: req.userId
+            stack: error.stack
         });
         res.status(500).send({
             message: "Error al recuperar usuario",
@@ -286,6 +291,7 @@ exports.findOne = async (req, res) => {
         });
     }
 };
+
 
 /*exports.getUserById = async (req, res) => {
     console.log('\n=== DIAGNÓSTICO AVANZADO - GET USER BY ID ===');
