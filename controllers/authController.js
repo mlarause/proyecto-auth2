@@ -220,62 +220,59 @@ exports.getAllUsers = async (req, res) => {
 };
 
 exports.getUserById = async (req, res) => {
-    console.log('\n=== INICIO DIAGNÓSTICO GET USER BY ID ===');
+    console.log('\n=== INICIO CONSULTA USUARIO POR ID ===');
     
-    // 1. Registro completo de la solicitud
-    console.log('[1/5] Parámetros recibidos:', {
-        id: req.params.id,
-        userId: req.userId,
-        userRoles: req.roles,
-        headers: {
-            authorization: req.headers.authorization ? '***' + req.headers.authorization.slice(-8) : null
-        }
-    });
-
     try {
         const id = req.params.id;
+        console.log('[1] ID solicitado:', id);
 
-        // 2. Validación básica del ID
+        // Validación básica del ID
         if (!id) {
-            console.log('[2/5] ERROR: ID no proporcionado');
+            console.log('[ERROR] ID no proporcionado');
             return res.status(400).json({ 
                 success: false,
                 message: "ID de usuario requerido" 
             });
         }
 
-        // 3. Verificación de permisos
-        console.log('[3/5] Verificando permisos...');
+        // Verificación de permisos
+        console.log('[2] Verificando permisos...');
         const isAllowed = req.roles.includes('admin') || 
                         req.roles.includes('coordinator') || 
                         req.userId === id;
         
         if (!isAllowed) {
-            console.log('[3/5] PERMISO DENEGADO. Roles:', req.roles);
+            console.log('[PERMISO DENEGADO] Roles:', req.roles);
             return res.status(403).json({
                 success: false,
                 message: "No autorizado"
             });
         }
 
-        // 4. Consulta directa usando findByPk (más estable que raw query)
-        console.log('[4/5] Buscando usuario con findByPk...');
-        const user = await db.user.findByPk(id, {
-            attributes: ['id', 'username', 'email', 'createdAt', 'updatedAt'],
-            raw: true
-        });
+        // Consulta directa SIN relaciones
+        console.log('[3] Buscando usuario en DB...');
+        const user = await db.sequelize.query(
+            `SELECT id, username, email, createdAt, updatedAt 
+             FROM users 
+             WHERE id = :id 
+             LIMIT 1`,
+            {
+                replacements: { id },
+                type: db.sequelize.QueryTypes.SELECT
+            }
+        );
 
-        console.log('[4/5] Resultado usuario:', user);
-        if (!user) {
-            console.log('[4/5] ERROR: Usuario no encontrado');
+        console.log('[4] Resultado usuario:', user);
+        if (!user || user.length === 0) {
+            console.log('[ERROR] Usuario no encontrado');
             return res.status(404).json({
                 success: false,
                 message: "Usuario no encontrado"
             });
         }
 
-        // 5. Consulta de roles por separado
-        console.log('[5/5] Buscando roles del usuario...');
+        // Consulta EXPLÍCITA de roles
+        console.log('[5] Consultando roles...');
         const roles = await db.sequelize.query(
             `SELECT r.name FROM roles r
              JOIN user_roles ur ON r.id = ur.roleId
@@ -290,12 +287,12 @@ exports.getUserById = async (req, res) => {
         const response = {
             success: true,
             data: {
-                ...user,
-                roles: roles.map(r => r.name)
+                ...user[0],
+                roles: roles.map(r => r.name) // Mapeo seguro de roles
             }
         };
 
-        console.log('=== CONSULTA EXITOSA ===');
+        console.log('[6] Respuesta exitosa');
         return res.json(response);
 
     } catch (error) {
