@@ -220,103 +220,122 @@ exports.getAllUsers = async (req, res) => {
 };
 
 exports.getUserById = async (req, res) => {
-    console.log('\n=== INICIO DIAGNÓSTICO getUserById ===');
-    console.log('[1] Headers recibidos:', {
-        authorization: req.headers.authorization ? '***' + req.headers.authorization.slice(-8) : null,
-        'x-access-token': req.headers['x-access-token']
-    });
-    console.log('[2] Parámetros recibidos:', req.params);
-    console.log('[3] Usuario autenticado:', {
-        id: req.userId,
-        roles: req.roles
-    });
+    const debug = {
+        step: 'INICIO',
+        timestamp: new Date().toISOString(),
+        params: req.params,
+        user: {
+            id: req.userId,
+            roles: req.roles
+        }
+    };
+
+    console.log('\n=== DIAGNÓSTICO PROFUNDO getUserById ===');
+    console.log('[1] Estado inicial:', JSON.stringify(debug, null, 2));
 
     try {
+        debug.step = 'VALIDACION_ID';
         const id = req.params.id;
-
-        // Validación idéntica a getAllUsers
+        
         if (!id) {
-            console.log('[ERROR] ID no proporcionado');
+            debug.error = 'ID no proporcionado';
+            console.log('[2] Error validación:', JSON.stringify(debug, null, 2));
             return res.status(400).json({ 
                 success: false,
                 message: "ID de usuario requerido" 
             });
         }
+        debug.id = id;
 
-        // Permisos idénticos a getAllUsers pero para un solo usuario
+        debug.step = 'VERIFICACION_PERMISOS';
         const isAllowed = req.roles.includes('admin') || 
                         req.roles.includes('coordinator') || 
                         req.userId === id;
-        
+        debug.permisos = {
+            isAdmin: req.roles.includes('admin'),
+            isCoordinator: req.roles.includes('coordinator'),
+            isSelf: req.userId === id,
+            accesoPermitido: isAllowed
+        };
+
         if (!isAllowed) {
-            console.log('[PERMISO DENEGADO] Roles:', req.roles);
+            debug.error = 'Acceso denegado por permisos';
+            console.log('[3] Permiso denegado:', JSON.stringify(debug, null, 2));
             return res.status(403).json({
                 success: false,
                 message: "No autorizado"
             });
         }
 
-        console.log('[4] Ejecutando consulta SQL...');
+        debug.step = 'PRE_CONSULTA_DB';
+        console.log('[4] Pre-consulta a DB:', JSON.stringify(debug, null, 2));
+
+        // Consulta directa sin relaciones complejas
+        debug.step = 'CONSULTA_DB_PRINCIPAL';
+        debug.query = `SELECT id, username, email, createdAt, updatedAt FROM users WHERE id = :id LIMIT 1`;
+        
+        console.log('[5] Ejecutando consulta principal:', debug.query);
         const startTime = Date.now();
         
-        // CONSULTA IDÉNTICA EN ESTRUCTURA A getAllUsers PERO CON FILTRO POR ID
-        const result = await db.sequelize.query(
-            `SELECT 
-                u.id,
-                u.username,
-                u.email,
-                u.createdAt,
-                u.updatedAt,
-                (
-                    SELECT GROUP_CONCAT(r.name SEPARATOR ',') 
-                    FROM roles r
-                    JOIN user_roles ur ON r.id = ur.roleId
-                    WHERE ur.userId = u.id
-                ) AS roles
-             FROM users u
-             WHERE u.id = :id
-             LIMIT 1`,
+        const user = await db.sequelize.query(
+            debug.query,
             {
                 replacements: { id },
-                type: db.sequelize.QueryTypes.SELECT,
-                logging: console.log // <- Loggeo directo de la consulta SQL
+                type: db.sequelize.QueryTypes.SELECT
             }
         );
+        debug.dbTime = `${Date.now() - startTime}ms`;
+        debug.dbResult = user;
 
-        console.log(`[5] Consulta completada en ${Date.now() - startTime}ms`);
-        console.log('[6] Resultado raw:', result);
-
-        if (!result || result.length === 0) {
-            console.log('[ERROR] Usuario no encontrado');
+        if (!user || user.length === 0) {
+            debug.error = 'Usuario no encontrado';
+            console.log('[6] Usuario no existe:', JSON.stringify(debug, null, 2));
             return res.status(404).json({
                 success: false,
                 message: "Usuario no encontrado"
             });
         }
 
-        // Procesamiento idéntico a getAllUsers
-        const userData = result[0];
+        // Consulta de roles por separado
+        debug.step = 'CONSULTA_ROLES';
+        debug.rolesQuery = `SELECT r.name FROM roles r JOIN user_roles ur ON r.id = ur.roleId WHERE ur.userId = :userId`;
+        
+        console.log('[7] Ejecutando consulta de roles:', debug.rolesQuery);
+        const rolesStartTime = Date.now();
+        
+        const roles = await db.sequelize.query(
+            debug.rolesQuery,
+            {
+                replacements: { userId: id },
+                type: db.sequelize.QueryTypes.SELECT
+            }
+        );
+        debug.rolesTime = `${Date.now() - rolesStartTime}ms`;
+        debug.rolesResult = roles;
+
+        // Formatear respuesta
+        debug.step = 'FORMATEO_RESPUESTA';
         const response = {
             success: true,
             data: {
-                ...userData,
-                roles: userData.roles ? userData.roles.split(',') : []
+                ...user[0],
+                roles: roles.map(r => r.name)
             }
         };
+        debug.response = response;
 
-        console.log('[7] Respuesta exitosa:', {
-            id: response.data.id,
-            roles: response.data.roles
-        });
-
+        debug.step = 'COMPLETADO';
+        console.log('[8] Proceso completado:', JSON.stringify(debug, null, 2));
+        
         return res.json(response);
 
     } catch (error) {
-        console.error('[ERROR CRÍTICO]', {
+        debug.step = 'ERROR';
+        debug.error = {
             message: error.message,
-            stack: error.stack,
-            timestamp: new Date().toISOString()
-        });
+            stack: error.stack
+        };
+        console.error('[ERROR] Detalles completos:', JSON.stringify(debug, null, 2));
         return res.status(500).json({
             success: false,
             message: "Error al obtener usuario",
@@ -324,108 +343,6 @@ exports.getUserById = async (req, res) => {
         });
     }
 };
-/*exports.getUserById = async (req, res) => {
-    console.log('\n=== DIAGNÓSTICO AVANZADO - GET USER BY ID ===');
-    
-    try {
-        // 1. Verificar datos de autenticación
-        console.log('[1] Datos del usuario autenticado:', {
-            userId: req.userId,
-            userRole: req.userRole,
-            tokenValido: !!req.userId && !!req.userRole
-        });
-
-        if (!req.userId || !req.userRole) {
-            console.error('[2] Error: Datos de autenticación incompletos');
-            return res.status(401).json({
-                success: false,
-                message: 'Autenticación inválida'
-            });
-        }
-
-        // 2. Validar formato del ID
-        console.log('[3] ID recibido:', req.params.id);
-        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-            console.error('[4] Error: Formato de ID inválido');
-            return res.status(400).json({
-                success: false,
-                message: 'ID de usuario no válido'
-            });
-        }
-
-        // 3. Convertir ID a ObjectId
-        const userId = new mongoose.Types.ObjectId(req.params.id);
-        console.log('[5] ID convertido a ObjectId:', userId);
-
-        // 4. Consulta con diagnóstico completo
-        console.log('[6] Ejecutando consulta MongoDB...');
-        const user = await User.findById(userId)
-            .select('-password -__v')
-            .lean()
-            .catch(err => {
-                console.error('[6a] Error en consulta MongoDB:', err);
-                throw err;
-            });
-
-        console.log('[7] Resultado de consulta:', user ? 'Éxito' : 'Usuario no encontrado');
-
-        if (!user) {
-            console.error('[8] Error: Usuario no existe en BD');
-            return res.status(404).json({
-                success: false,
-                message: 'Usuario no encontrado'
-            });
-        }
-
-        // 5. Verificar permisos
-        console.log('[9] Control de acceso:', {
-            rolSolicitante: req.userRole,
-            rolUsuarioConsultado: user.role
-        });
-
-        if (!['admin', 'coordinator'].includes(req.userRole)) {
-            console.error('[10] Error: Permisos insuficientes');
-            return res.status(403).json({
-                success: false,
-                message: 'No autorizado'
-            });
-        }
-
-        // 6. Preparar respuesta
-        const responseData = {
-            _id: user._id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            status: user.status
-        };
-
-        console.log('[11] Respuesta preparada:', responseData);
-        return res.status(200).json({
-            success: true,
-            data: responseData
-        });
-
-    } catch (error) {
-        console.error('[ERROR] Detalles completos:', {
-            name: error.name,
-            message: error.message,
-            stack: error.stack,
-            params: req.params,
-            user: req.user,
-            timestamp: new Date()
-        });
-        
-        return res.status(500).json({
-            success: false,
-            message: 'Error en el servidor',
-            error: process.env.NODE_ENV === 'development' ? {
-                name: error.name,
-                message: error.message
-            } : undefined
-        });
-    }
-};*/
 /**
  * @desc    Verificar token
  * @route   GET /api/auth/verify
