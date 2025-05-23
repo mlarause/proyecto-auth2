@@ -220,97 +220,91 @@ exports.getAllUsers = async (req, res) => {
 };
 
 exports.getUserById = async (req, res) => {
-    console.log('\n=== INICIO DIAGNÓSTICO - CONSULTA POR ID ===');
-    console.log('[1/6] Parámetros recibidos:', {
-        idSolicitado: req.params.id,
-        usuarioSolicitante: req.userId,
-        rolesUsuario: req.roles // Asegurando compatibilidad con authJwt.js
+    console.log('\n=== INICIO DIAGNÓSTICO DETALLADO ===');
+    console.log('[1] Parámetros recibidos:', {
+        id: req.params.id,
+        userId: req.userId,
+        userRoles: req.roles
     });
 
     try {
-        const userId = req.params.id;
-        
+        const id = req.params.id;
+
         // Validación básica del ID
-        if (!userId) {
+        if (!id) {
             console.log('[ERROR] ID no proporcionado');
             return res.status(400).json({ 
                 success: false,
-                message: "ID de usuario es requerido"
+                message: "ID de usuario requerido" 
             });
         }
 
-        // Control de acceso mejorado
-        console.log('[2/6] Verificando permisos...');
-        const tienePermiso = req.roles.includes('admin') || 
-                           req.roles.includes('coordinator') || 
-                           req.userId === userId;
+        // Verificación de permisos (sin modificar authJwt)
+        console.log('[2] Verificando permisos...');
+        const isAllowed = req.roles.includes('admin') || 
+                         req.roles.includes('coordinator') || 
+                         req.userId === id;
         
-        if (!tienePermiso) {
-            console.log('[PERMISO] Acceso denegado. Roles:', req.roles);
+        if (!isAllowed) {
+            console.log('[PERMISO DENEGADO]', {
+                roles: req.roles,
+                userId: req.userId,
+                requestedId: id
+            });
             return res.status(403).json({
                 success: false,
-                message: "No autorizado para ver este usuario"
+                message: "No autorizado"
             });
         }
 
-        // Consulta optimizada y segura
-        console.log('[3/6] Ejecutando consulta a la base de datos...');
-        const usuario = await User.findOne({
-            where: { id: userId },
-            include: [{
-                model: Role,
-                attributes: ['name'],
-                through: { attributes: [] },
-                required: false // Para evitar INNER JOIN
-            }],
-            attributes: { exclude: ['password'] }
-        });
+        // Consulta directa sin relaciones problemáticas
+        console.log('[3] Buscando usuario en DB...');
+        const user = await db.sequelize.query(
+            `SELECT u.id, u.username, u.email, u.createdAt, u.updatedAt,
+             GROUP_CONCAT(r.name) as roles
+             FROM users u
+             LEFT JOIN user_roles ur ON u.id = ur.userId
+             LEFT JOIN roles r ON ur.roleId = r.id
+             WHERE u.id = :userId
+             GROUP BY u.id`,
+            {
+                replacements: { userId: id },
+                type: db.sequelize.QueryTypes.SELECT
+            }
+        );
 
-        // Verificación de resultados
-        if (!usuario) {
-            console.log('[ERROR] Usuario no encontrado en BD');
+        console.log('[4] Resultado consulta:', user);
+
+        if (!user || user.length === 0) {
+            console.log('[ERROR] Usuario no encontrado');
             return res.status(404).json({
                 success: false,
                 message: "Usuario no encontrado"
             });
         }
 
-        console.log('[4/6] Datos básicos del usuario:', {
-            id: usuario.id,
-            email: usuario.email
-        });
-
-        // Procesamiento seguro de roles
-        console.log('[5/6] Procesando roles...');
-        const rolesUsuario = usuario.Roles ? 
-                           usuario.Roles.map(rol => rol.name) : 
-                           [];
-
-        console.log('Roles encontrados:', rolesUsuario);
-
-        // Respuesta estandarizada
-        const respuesta = {
+        // Formatear respuesta
+        const response = {
             success: true,
             data: {
-                id: usuario.id,
-                username: usuario.username,
-                email: usuario.email,
-                roles: rolesUsuario,
-                createdAt: usuario.createdAt,
-                updatedAt: usuario.createdAt
+                id: user[0].id,
+                username: user[0].username,
+                email: user[0].email,
+                roles: user[0].roles ? user[0].roles.split(',') : [],
+                createdAt: user[0].createdAt,
+                updatedAt: user[0].updatedAt
             }
         };
 
-        console.log('[6/6] === CONSULTA EXITOSA ===');
-        return res.json(respuesta);
+        console.log('[5] Respuesta exitosa:', response);
+        return res.json(response);
 
     } catch (error) {
-        console.error('=== ERROR EN CONSULTA ===', {
-            mensaje: error.message,
+        console.error('[ERROR CRÍTICO]', {
+            message: error.message,
             stack: error.stack,
             timestamp: new Date().toISOString()
         });
-        
         return res.status(500).json({
             success: false,
             message: "Error al obtener usuario",
