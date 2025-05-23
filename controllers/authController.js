@@ -220,11 +220,13 @@ exports.getAllUsers = async (req, res) => {
 };
 
 exports.getUserById = async (req, res) => {
-    console.log('\n=== INICIO GET USER BY ID ===');
+    console.log('\n=== INICIO CONSULTA POR ID ===');
     
     try {
-        // 1. Validación de entrada (igual que en deleteUser)
         const id = req.params.id;
+        console.log('[1] ID recibido:', id);
+
+        // Validación básica del ID
         if (!id) {
             console.log('[ERROR] ID no proporcionado');
             return res.status(400).json({ 
@@ -233,7 +235,8 @@ exports.getUserById = async (req, res) => {
             });
         }
 
-        // 2. Control de acceso (como en getAllUsers)
+        // Verificación de permisos
+        console.log('[2] Verificando permisos...');
         const isAllowed = req.roles.includes('admin') || 
                         req.roles.includes('coordinator') || 
                         req.userId === id;
@@ -246,10 +249,16 @@ exports.getUserById = async (req, res) => {
             });
         }
 
-        // 3. Consulta directa (estilo getAllUsers pero con filtro por ID)
-        console.log('[DB] Buscando usuario...');
+        // CONSULTA DIRECTA SIN USAR RELACIONES
+        console.log('[3] Ejecutando consulta segura...');
         const user = await db.sequelize.query(
-            `SELECT u.id, u.username, u.email, u.createdAt, u.updatedAt
+            `SELECT u.id, u.username, u.email, u.createdAt, u.updatedAt,
+             (
+               SELECT JSON_ARRAYAGG(r.name)
+               FROM roles r
+               JOIN user_roles ur ON r.id = ur.roleId
+               WHERE ur.userId = u.id
+             ) as roles
              FROM users u
              WHERE u.id = :id
              LIMIT 1`,
@@ -259,6 +268,7 @@ exports.getUserById = async (req, res) => {
             }
         );
 
+        console.log('[4] Resultado consulta:', user);
         if (!user || user.length === 0) {
             console.log('[ERROR] Usuario no encontrado');
             return res.status(404).json({
@@ -267,33 +277,28 @@ exports.getUserById = async (req, res) => {
             });
         }
 
-        // 4. Consulta de roles (como en getAllUsers)
-        console.log('[DB] Buscando roles...');
-        const roles = await db.sequelize.query(
-            `SELECT r.name 
-             FROM user_roles ur
-             JOIN roles r ON ur.roleId = r.id
-             WHERE ur.userId = :userId`,
-            {
-                replacements: { userId: id },
-                type: db.sequelize.QueryTypes.SELECT
-            }
-        );
-
-        // 5. Formatear respuesta (igual que getAllUsers)
+        // Procesamiento seguro de roles
+        const userData = user[0];
+        const roles = userData.roles ? JSON.parse(userData.roles) : [];
+        
+        // Formatear respuesta
         const response = {
             success: true,
             data: {
-                ...user[0],
-                roles: roles.map(r => r.name)
+                id: userData.id,
+                username: userData.username,
+                email: userData.email,
+                roles: roles,
+                createdAt: userData.createdAt,
+                updatedAt: userData.updatedAt
             }
         };
 
-        console.log('=== CONSULTA EXITOSA ===');
+        console.log('[5] Respuesta exitosa');
         return res.json(response);
 
     } catch (error) {
-        console.error('[ERROR]', {
+        console.error('[ERROR CRÍTICO]', {
             message: error.message,
             stack: error.stack,
             timestamp: new Date().toISOString()
