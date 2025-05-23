@@ -18,25 +18,12 @@ const checkPermission = (userRole, allowedRoles) => {
 // 1. Registro de usuarios (SOLO ADMIN)
 exports.signup = async (req, res) => {
   try {
-    console.log('[AuthController] Datos recibidos:', {
-      username: req.body.username,
-      email: req.body.email,
-      roles: req.body.roles // Verificar qué se recibe realmente
-    });
-
-    // Convertir el array de roles a string (para compatibilidad con tu modelo)
-    const roleToSave = req.body.roles && req.body.roles.length > 0 
-      ? req.body.roles[0] // Tomar el primer rol del array
-      : 'auxiliar'; // Valor por defecto
-
     const user = new User({
       username: req.body.username,
       email: req.body.email,
       password: bcrypt.hashSync(req.body.password, 8),
-      role: roleToSave // Usar el campo singular 'role'
+      role: req.body.role || 'auxiliar' // Usamos el valor directo
     });
-
-    console.log('[AuthController] Usuario a guardar:', user);
 
     const savedUser = await user.save();
     
@@ -48,16 +35,10 @@ exports.signup = async (req, res) => {
       success: true,
       message: "Usuario registrado correctamente",
       token: token,
-      user: {
-        id: savedUser._id,
-        username: savedUser.username,
-        email: savedUser.email,
-        role: savedUser.role // Devolver el campo singular
-      }
+      user: savedUser
     });
 
   } catch (error) {
-    console.error('[AuthController] Error:', error);
     res.status(500).json({
       success: false,
       message: "Error al registrar usuario",

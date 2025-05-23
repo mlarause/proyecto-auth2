@@ -27,20 +27,16 @@ const checkDuplicateUsernameOrEmail = async (req, res, next) => {
 };
 
 const checkRolesExisted = (req, res, next) => {
-  if (req.body.roles && Array.isArray(req.body.roles)) {
+  // Verificamos si viene el campo 'role' como string
+  if (req.body.role) {
     const validRoles = ['admin', 'coordinador', 'auxiliar'];
-    const invalidRoles = req.body.roles.filter(role => !validRoles.includes(role));
     
-    if (invalidRoles.length > 0) {
+    if (!validRoles.includes(req.body.role)) {
       return res.status(400).json({
         success: false,
-        message: `Roles inválidos: ${invalidRoles.join(', ')}`
+        message: `Rol no válido: ${req.body.role}`
       });
     }
-    
-    // Convertir array de roles a string para compatibilidad
-    req.body.role = req.body.roles[0]; // Tomar el primer rol
-    delete req.body.roles; // Eliminar el campo plural
   }
   next();
 };
