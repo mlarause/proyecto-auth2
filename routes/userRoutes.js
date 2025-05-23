@@ -1,55 +1,47 @@
 const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/userController');
-const { authJwt, verifySignUp, role } = require('../middlewares');
+const { verifyToken } = require('../middlewares/authJwt');
+const { checkRole } = require('../middlewares/role');
 
-// Middleware de autenticación para todas las rutas
+// Middleware de rastreo para diagnóstico (se puede eliminar después)
 router.use((req, res, next) => {
-  console.log(`[ROUTE] Acceso a ruta: ${req.method} ${req.path}`); // Diagnóstico
-  authJwt.verifyToken(req, res, next);
+    console.log('\n=== PETICIÓN USUARIOS ===');
+    console.log('Método:', req.method);
+    console.log('Ruta:', req.originalUrl);
+    console.log('Headers:', {
+        authorization: req.headers.authorization ? '***' + req.headers.authorization.slice(-10) : 'NO PROVISTO',
+        'x-access-token': req.headers['x-access-token'] ? '***' + req.headers['x-access-token'].slice(-10) : 'NO PROVISTO'
+    });
+    next();
 });
 
-// GET /api/users - Solo Admin
+// GET /api/users - Listar todos los usuarios
 router.get('/', 
-  (req, res, next) => {
-    console.log('[ROLE] Verificando roles para GET /users', req.user); // Diagnóstico
-    role.checkRole(['admin'])(req, res, next);
-  }, 
-  userController.getAllUsers
+    verifyToken, 
+    checkRole('admin', 'coordinator', 'auxiliary'),
+    userController.getAllUsers
 );
 
-// GET /api/users/:id - Acceso controlado
-router.get('/:id', userController.getUserById);
-
-// POST /api/users - Admin y Coordinador
-router.post('/',
-  [
-    (req, res, next) => {
-      console.log('[ROLE] Verificando roles para POST /users', req.user); // Diagnóstico
-      role.checkRole(['admin', 'coordinador'])(req, res, next);
-    },
-    verifySignUp.checkDuplicateUsernameOrEmail,
-    verifySignUp.checkRolesExisted
-  ],
-  userController.createUser
+// POST /api/users - Crear nuevo usuario
+router.post('/', 
+    verifyToken,
+    checkRole('admin'),
+    userController.createUser
 );
 
-// PUT /api/users/:id - Admin y Coordinador
-router.put('/:id',
-  [
-    role.checkRole(['admin', 'coordinador']),
-    verifySignUp.checkRolesExisted
-  ],
-  userController.updateUser
+// PUT /api/users/:id - Actualizar usuario
+router.put('/:id', 
+    verifyToken,
+    checkRole('admin', 'coordinator'),
+    userController.updateUser
 );
 
-// DELETE /api/users/:id - Solo Admin
-router.delete('/:id',
-  (req, res, next) => {
-    console.log('[ROLE] Verificando roles para DELETE /users', req.user); // Diagnóstico
-    role.checkRole(['admin'])(req, res, next);
-  },
-  userController.deleteUser
+// DELETE /api/users/:id - Eliminar usuario
+router.delete('/:id', 
+    verifyToken,
+    checkRole('admin'),
+    userController.deleteUser
 );
 
 module.exports = router;
