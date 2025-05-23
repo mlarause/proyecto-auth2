@@ -218,7 +218,7 @@ exports.getAllUsers = async (req, res) => {
     }
 };
 
-exports.getUserById = async (req, res) => {
+/*exports.getUserById = async (req, res) => {
     console.log('\n=== DIAGNÓSTICO AVANZADO - GET USER BY ID ===');
     
     try {
@@ -319,7 +319,7 @@ exports.getUserById = async (req, res) => {
             } : undefined
         });
     }
-};
+};*/
 /**
  * @desc    Verificar token
  * @route   GET /api/auth/verify
@@ -357,24 +357,35 @@ exports.verifyToken = async (req, res) => {
 };
 
 exports.findOne = async (req, res) => {
-    const id = req.params.id;
-    console.log('[DEBUG] Iniciando findOne, ID recibido:', id);
-    console.log('[DEBUG] User ID from token:', req.userId);
-    console.log('[DEBUG] User roles:', req.roles);
+    console.log('[USER CONTROLLER] Iniciando findOne');
+    console.log('[DEBUG] Parámetros recibidos:', {
+        params: req.params,
+        userId: req.userId,
+        roles: req.roles
+    });
 
     try {
-        // 1. Verificar permisos
+        const id = req.params.id;
+        
+        // 1. Validación básica del ID (igual que en otros controladores)
+        if (!id) {
+            console.log('[ERROR] ID no proporcionado');
+            return res.status(400).send({ message: "ID de usuario requerido" });
+        }
+
+        // 2. Control de permisos (misma lógica que findAll)
         const isAdmin = req.roles.includes('admin');
         const isCoordinator = req.roles.includes('coordinator');
         
         if (!isAdmin && !isCoordinator && req.userId !== id) {
-            console.log('[DEBUG] Permiso denegado: usuario no autorizado');
-            return res.status(403).send({ message: 'No autorizado' });
+            console.log('[AUTH] Acceso denegado - Permisos insuficientes');
+            return res.status(403).send({ message: "No autorizado" });
         }
 
-        // 2. Buscar usuario con relaciones
-        console.log('[DEBUG] Buscando usuario en DB...');
-        const user = await User.findByPk(id, {
+        // 3. Consulta a la base de datos (mismo patrón que en otros controladores)
+        console.log('[DEBUG] Ejecutando consulta para usuario ID:', id);
+        const user = await User.findOne({
+            where: { id: id },
             include: [{
                 model: Role,
                 attributes: ['id', 'name'],
@@ -384,18 +395,34 @@ exports.findOne = async (req, res) => {
         });
 
         if (!user) {
-            console.log('[DEBUG] Usuario no encontrado');
-            return res.status(404).send({ message: 'Usuario no encontrado' });
+            console.log('[ERROR] Usuario no encontrado');
+            return res.status(404).send({ message: "Usuario no encontrado" });
         }
 
-        console.log('[DEBUG] Usuario encontrado:', JSON.stringify(user, null, 2));
-        res.send(user);
+        console.log('[DEBUG] Usuario encontrado:', {
+            id: user.id,
+            username: user.username,
+            roles: user.Roles.map(role => role.name)
+        });
+
+        // 4. Responder con el mismo formato que findAll
+        res.send({
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            roles: user.Roles.map(role => role.name),
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt
+        });
+
     } catch (error) {
-        console.error('[ERROR] En findOne:', error);
+        console.error('[ERROR] En findOne:', {
+            message: error.message,
+            stack: error.stack
+        });
         res.status(500).send({
-            message: 'Error al recuperar usuario',
-            error: error.message,
-            stack: error.stack // Solo para desarrollo
+            message: "Error al recuperar usuario",
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
 };
