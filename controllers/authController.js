@@ -17,51 +17,53 @@ const checkPermission = (userRole, allowedRoles) => {
 
 // 1. Registro de usuarios (SOLO ADMIN)
 exports.signup = async (req, res) => {
-    try {
-        console.log('[AuthController] Datos recibidos en signup:', {
-            username: req.body.username,
-            email: req.body.email,
-            roles: req.body.roles // Agregamos log para ver los roles recibidos
-        });
+  try {
+    console.log('[AuthController] Datos recibidos:', {
+      username: req.body.username,
+      email: req.body.email,
+      roles: req.body.roles // Verificar qué se recibe realmente
+    });
 
-        // Crear usuario con los roles proporcionados o 'auxiliar' por defecto
-        const user = new User({
-            username: req.body.username,
-            email: req.body.email,
-            password: bcrypt.hashSync(req.body.password, 8),
-            roles: req.body.roles || ['auxiliar'] // Usar roles proporcionados o defecto
-        });
+    // Convertir el array de roles a string (para compatibilidad con tu modelo)
+    const roleToSave = req.body.roles && req.body.roles.length > 0 
+      ? req.body.roles[0] // Tomar el primer rol del array
+      : 'auxiliar'; // Valor por defecto
 
-        console.log('[AuthController] Usuario a crear:', user);
+    const user = new User({
+      username: req.body.username,
+      email: req.body.email,
+      password: bcrypt.hashSync(req.body.password, 8),
+      role: roleToSave // Usar el campo singular 'role'
+    });
 
-        const savedUser = await user.save();
-        
-        // Generar token
-        const token = jwt.sign({ id: savedUser._id }, config.secret, {
-            expiresIn: config.jwtExpiration
-        });
+    console.log('[AuthController] Usuario a guardar:', user);
 
-        // Respuesta con datos del usuario registrado
-        res.status(200).json({
-            success: true,
-            message: "Usuario registrado correctamente",
-            token: token,
-            user: {
-                id: savedUser._id,
-                username: savedUser.username,
-                email: savedUser.email,
-                roles: savedUser.roles // Incluir roles en la respuesta
-            }
-        });
+    const savedUser = await user.save();
+    
+    const token = jwt.sign({ id: savedUser._id }, config.secret, {
+      expiresIn: config.jwtExpiration
+    });
 
-    } catch (error) {
-        console.error('[AuthController] Error en signup:', error);
-        res.status(500).json({
-            success: false,
-            message: "Error al registrar usuario",
-            error: error.message
-        });
-    }
+    res.status(200).json({
+      success: true,
+      message: "Usuario registrado correctamente",
+      token: token,
+      user: {
+        id: savedUser._id,
+        username: savedUser.username,
+        email: savedUser.email,
+        role: savedUser.role // Devolver el campo singular
+      }
+    });
+
+  } catch (error) {
+    console.error('[AuthController] Error:', error);
+    res.status(500).json({
+      success: false,
+      message: "Error al registrar usuario",
+      error: error.message
+    });
+  }
 };
 // 2. Login (común para todos)
 exports.signin = async (req, res) => {

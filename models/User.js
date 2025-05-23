@@ -21,11 +21,7 @@ const userSchema = new mongoose.Schema({
     minlength: 6,
     select: false
   },
-   role: {
-    type: String,
-    enum: ['admin', 'coordinador', 'auxiliar'],
-    default: 'auxiliar'
-  },
+   role: { type: String, default: 'auxiliar', enum: ['admin', 'coordinador', 'auxiliar'] },
 }, {
   timestamps: true,
   versionKey: false
