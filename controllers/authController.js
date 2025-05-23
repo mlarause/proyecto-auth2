@@ -48,57 +48,73 @@ exports.signup = async (req, res) => {
 };
 // 2. Login (común para todos)
 exports.signin = async (req, res) => {
-    try {
-        // 1. Buscar usuario
-        const user = await User.findOne({ username: req.body.username });
-        
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: "Usuario no encontrado"
-            });
-        }
+  try {
+    console.log('[AuthController] Datos recibidos en signin:', {
+      username: req.body.username,
+      password: req.body.password ? '***' : 'NO PROVISTO' // Log seguro de contraseña
+    });
 
-        // 2. Verificar contraseña
-        const passwordIsValid = bcrypt.compareSync(
-            req.body.password,
-            user.password
-        );
-
-        if (!passwordIsValid) {
-            return res.status(401).json({
-                success: false,
-                message: "Contraseña incorrecta"
-            });
-        }
-
-        // 3. Generar token
-        const token = jwt.sign({ id: user._id }, config.secret, {
-            expiresIn: config.jwtExpiration
-        });
-
-        // 4. Responder con los datos
-        res.status(200).json({
-            success: true,
-            message: "Autenticación exitosa",
-            token: token,
-            user: {
-                id: user._id,
-                username: user.username,
-                email: user.email,
-                roles: user.roles
-            }
-        });
-
-    } catch (error) {
-        console.error("[AuthController] Error en signin:", error);
-        res.status(500).json({
-            success: false,
-            message: "Error durante el login"
-        });
+    // 1. Buscar usuario
+    const user = await User.findOne({ username: req.body.username });
+    
+    if (!user) {
+      console.log('[AuthController] Usuario no encontrado:', req.body.username);
+      return res.status(404).json({
+        success: false,
+        message: "Usuario no encontrado"
+      });
     }
-};
 
+    // 2. Verificar que la contraseña fue provista
+    if (!req.body.password) {
+      console.log('[AuthController] Contraseña no provista');
+      return res.status(400).json({
+        success: false,
+        message: "Contraseña requerida"
+      });
+    }
+
+    // 3. Verificar contraseña
+    const passwordIsValid = bcrypt.compareSync(
+      req.body.password,
+      user.password
+    );
+
+    if (!passwordIsValid) {
+      console.log('[AuthController] Contraseña incorrecta para usuario:', user.username);
+      return res.status(401).json({
+        success: false,
+        message: "Contraseña incorrecta"
+      });
+    }
+
+    // 4. Generar token
+    const token = jwt.sign({ id: user._id }, config.secret, {
+      expiresIn: config.jwtExpiration
+    });
+
+    // 5. Responder con éxito
+    res.status(200).json({
+      success: true,
+      message: "Autenticación exitosa",
+      token: token,
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        role: user.role
+      }
+    });
+
+  } catch (error) {
+    console.error('[AuthController] Error en signin:', error);
+    res.status(500).json({
+      success: false,
+      message: "Error durante el login",
+      error: error.message
+    });
+  }
+};
 // 3. Obtener todos los usuarios (Admin y Coordinador)
 exports.getAllUsers = async (req, res) => {
   try {
