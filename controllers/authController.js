@@ -220,42 +220,48 @@ exports.getAllUsers = async (req, res) => {
 };
 
 exports.getUserById = async (req, res) => {
-    console.log('\n=== INICIO CONSULTA USUARIO POR ID ===');
-    console.log('[1/5] Parámetros recibidos:', {
+    console.log('\n=== INICIO DIAGNÓSTICO getUserById ===');
+    
+    // 1. Registro completo de la solicitud (como en getAllUsers)
+    console.log('[1/6] Parámetros recibidos:', {
         id: req.params.id,
         userId: req.userId,
-        roles: req.roles
+        userRoles: req.roles,
+        headers: {
+            authorization: req.headers.authorization ? '***' + req.headers.authorization.slice(-8) : null,
+            'x-access-token': req.headers['x-access-token']
+        }
     });
 
     try {
         const id = req.params.id;
 
-        // 1. Validación ID (igual que en categoryController)
+        // 2. Validación de entrada (igual que en getAllUsers)
         if (!id) {
-            console.log('[ERROR] ID no proporcionado');
+            console.log('[2/6] ERROR: ID no proporcionado');
             return res.status(400).json({ 
                 success: false,
-                message: "Se requiere ID de usuario" 
+                message: "ID de usuario requerido" 
             });
         }
 
-        // 2. Control de acceso (adaptado a usuarios)
-        console.log('[2/5] Verificando permisos...');
-        const canAccess = req.roles.includes('admin') || 
-                        req.roles.includes('coordinator') || 
-                        req.userId === id;
-        
-        if (!canAccess) {
-            console.log('[PERMISO] Denegado. Roles:', req.roles);
+        // 3. Control de acceso (mismo patrón que getAllUsers)
+        console.log('[3/6] Verificando permisos...');
+        const isAdmin = req.roles.includes('admin');
+        const isCoordinator = req.roles.includes('coordinator');
+        const isSelf = req.userId === id;
+
+        if (!isAdmin && !isCoordinator && !isSelf) {
+            console.log('[3/6] PERMISO DENEGADO. Roles:', req.roles);
             return res.status(403).json({
                 success: false,
-                message: "No autorizado"
+                message: "No autorizado para ver este usuario"
             });
         }
 
-        // 3. Consulta directa (mismo enfoque que categoryController)
-        console.log('[3/5] Ejecutando consulta SQL...');
-        const result = await db.sequelize.query(
+        // 4. Consulta principal (mismo enfoque que getAllUsers pero para un ID)
+        console.log('[4/6] Ejecutando consulta para usuario ID:', id);
+        const user = await db.sequelize.query(
             `SELECT 
                 u.id, 
                 u.username, 
@@ -277,36 +283,37 @@ exports.getUserById = async (req, res) => {
             }
         );
 
-        // 4. Procesar resultados (como en categoryController)
-        console.log('[4/5] Resultados:', result);
-        if (!result || result.length === 0) {
-            console.log('[ERROR] No encontrado');
+        // 5. Procesamiento de resultados (igual que getAllUsers)
+        console.log('[5/6] Resultados obtenidos:', user);
+        if (!user || user.length === 0) {
+            console.log('[5/6] ERROR: Usuario no encontrado');
             return res.status(404).json({
                 success: false,
                 message: "Usuario no encontrado"
             });
         }
 
-        const userData = result[0];
+        // 6. Formatear respuesta (mismo formato que getAllUsers)
         const response = {
             success: true,
             data: {
-                id: userData.id,
-                username: userData.username,
-                email: userData.email,
-                roles: userData.roles ? userData.roles.split(',') : [],
-                createdAt: userData.createdAt,
-                updatedAt: userData.updatedAt
+                ...user[0],
+                roles: user[0].roles ? user[0].roles.split(',') : []
             }
         };
 
-        console.log('[5/5] Respuesta exitosa');
+        console.log('[6/6] RESPUESTA EXITOSA:', {
+            id: response.data.id,
+            roles: response.data.roles
+        });
+
         return res.json(response);
 
     } catch (error) {
-        console.error('[ERROR CRÍTICO]', {
+        console.error('[ERROR CRÍTICO] Detalles:', {
             message: error.message,
             stack: error.stack,
+            params: req.params,
             timestamp: new Date().toISOString()
         });
         return res.status(500).json({
@@ -316,8 +323,6 @@ exports.getUserById = async (req, res) => {
         });
     }
 };
-
-
 /*exports.getUserById = async (req, res) => {
     console.log('\n=== DIAGNÓSTICO AVANZADO - GET USER BY ID ===');
     
