@@ -1,22 +1,32 @@
 const User = require('../models/User'); // Importación directa
 
-const checkDuplicateUsernameOrEmail = async (req, res, next) => {
+exports.checkDuplicateUsernameOrEmail = async (req, res, next) => {
   try {
-    const user = await User.findOne({
-      $or: [
-        { username: req.body.username },
-        { email: req.body.email }
-      ]
-    }).exec();
-
-    if (user) {
-      return res.status(400).json({ 
-        message: 'Error: Usuario o email ya existen!'
+    // Verificar username
+    const usernameExists = await User.findOne({ username: req.body.username });
+    if (usernameExists) {
+      return res.status(400).json({
+        success: false,
+        message: "El nombre de usuario ya está en uso"
       });
     }
+
+    // Verificar email
+    const emailExists = await User.findOne({ email: req.body.email });
+    if (emailExists) {
+      return res.status(400).json({
+        success: false,
+        message: "El email ya está registrado"
+      });
+    }
+
     next();
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+  } catch (error) {
+    console.error('Error en verificación:', error);
+    res.status(500).json({
+      success: false,
+      message: "Error al verificar credenciales"
+    });
   }
 };
 

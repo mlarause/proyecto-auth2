@@ -1,53 +1,47 @@
 const mongoose = require('mongoose');
-const Schema = mongoose.Schema;
 const bcrypt = require('bcryptjs');
 
-const UserSchema = new Schema({
-    name: {
-        type: String,
-        required: [true, 'El nombre es obligatorio'],
-        trim: true
-    },
-    email: {
-        type: String,
-        required: [true, 'El email es obligatorio'],
-        unique: true,
-        trim: true,
-        lowercase: true,
-        match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/, 'Email inválido']
-    },
-    password: {
-        type: String,
-        required: [true, 'La contraseña es obligatoria'],
-        minlength: [6, 'La contraseña debe tener al menos 6 caracteres']
-    },
-    role: {
-        type: String,
-        required: true,
-        enum: ['admin', 'coordinator', 'auxiliar'],
-        default: 'auxiliar'
-    },
-    status: {
-        type: Boolean,
-        default: true
-    }
+const userSchema = new mongoose.Schema({
+  username: {
+    type: String,
+    required: true,
+    unique: true,
+    trim: true
+  },
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+    lowercase: true,
+    trim: true
+  },
+  password: {
+    type: String,
+    required: true,
+    minlength: 6,
+    select: false
+  },
+  role: {
+    type: String,
+    enum: ['user', 'admin'],
+    default: 'user'
+  }
 }, {
-    timestamps: true,
-    versionKey: false
+  timestamps: true,
+  versionKey: false
 });
 
-// Método para comparar contraseñas
-UserSchema.methods.comparePassword = function(password) {
-    return bcrypt.compareSync(password, this.password);
-};
-
-// Hash de la contraseña antes de guardar
-UserSchema.pre('save', function(next) {
-    if (!this.isModified('password')) return next();
-    this.password = bcrypt.hashSync(this.password, 8);
+// Hash de contraseña antes de guardar
+userSchema.pre('save', async function(next) {
+  if (!this.isModified('password')) return next();
+  
+  try {
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
     next();
+  } catch (error) {
+    next(error);
+  }
 });
 
-
-
-module.exports = mongoose.model('User', UserSchema);
+module.exports = mongoose.model('User', userSchema);
