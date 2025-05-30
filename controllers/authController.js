@@ -184,7 +184,7 @@ exports.getUserById = async (req, res) => {
         // 2. Control de acceso (como en otros endpoints)
         console.log('[2] Verificando permisos...');
         const isAllowed = req.roles.includes('admin') || 
-                        req.roles.includes('coordinator') || 
+                        req.roles.includes('coordinador') || 
                         req.userId === id;
         
         if (!isAllowed) {
